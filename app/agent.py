@@ -25,7 +25,11 @@ Output a JSON object with two keys:
 If the user provided shifts but NO dates, set 'reply' to: 'I have updated the shift patterns. What dates should I generate this for?'"""
 
         # Initialize the model
-        self.model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_instruction)
+        # Using gemini-1.5-flash-001 as it is a specific version and likely to be available
+        # if the alias 'gemini-1.5-flash' is missing.
+        # Fallback logic could be added but for now we try the specific version.
+        self.model_name = "gemini-1.5-flash-001"
+        self.model = genai.GenerativeModel(self.model_name, system_instruction=system_instruction)
 
     def process_message(self, user_text: str):
         try:
@@ -37,6 +41,6 @@ If the user provided shifts but NO dates, set 'reply' to: 'I have updated the sh
         except Exception as e:
             # Fallback in case of API error or parsing error
             return {
-                "reply": f"Sorry, I encountered an error processing your request: {str(e)}",
+                "reply": f"Sorry, I encountered an error processing your request with model {self.model_name}: {str(e)}",
                 "extracted_shifts": None
             }
