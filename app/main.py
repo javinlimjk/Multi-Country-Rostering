@@ -12,6 +12,7 @@ from app.optimizer import RosterOptimizer
 from app.forecaster import StaffingForecaster
 from app.compliance import ComplianceEngine
 from app.rules import get_rules_for_country
+from app.agent import SchedulingAgent
 
 app = FastAPI(title="SATS Rostering API", version="6.0")
 
@@ -68,6 +69,9 @@ class RecommendationRequest(BaseModel):
 
 class MetricsRequest(BaseModel):
     assignments: List[Dict[str, Any]]
+
+class AgentChatRequest(BaseModel):
+    message: str
 
 # --- ENDPOINTS ---
 
@@ -160,3 +164,8 @@ def search_laws(query: str, country: str = "SG"): # Added country param
         raise HTTPException(status_code=503, detail="AI Engine not ready")
     # Pass the country code to the engine
     return compliance_engine.check_compliance(query, country_code=country)
+
+@app.post("/agent/chat")
+def agent_chat(payload: AgentChatRequest):
+    agent = SchedulingAgent()
+    return agent.process_message(payload.message)

@@ -160,7 +160,7 @@ with st.sidebar:
     st.info(f"User: **Planner_Admin ({country_enum})**")
 
 # --- MAIN WORKSPACE ---
-tab_config, tab_staff, tab_ops, tab_legal = st.tabs(["⚙️ Configuration", "👥 Staff Management", "🗓️ Roster Ops", "⚖️ Compliance"])
+tab_config, tab_staff, tab_ops, tab_legal, tab_chat = st.tabs(["⚙️ Configuration", "👥 Staff Management", "🗓️ Roster Ops", "⚖️ Compliance", "💬 AI Assistant"])
 
 # =========================================================
 # TAB 1: CONFIGURATION
@@ -605,3 +605,51 @@ with tab_legal:
                         st.markdown(f"**Source:** `{r['source']}`")
                         st.markdown(f"> {r['law_text']}")
         except: st.error("Search Failed")
+
+# =========================================================
+# TAB 5: AI ASSISTANT
+# =========================================================
+with tab_chat:
+    st.header("💬 AI Assistant")
+
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # React to user input
+    if prompt := st.chat_input("Describe your shift changes..."):
+        # Display user message in chat message container
+        st.chat_message("user").markdown(prompt)
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        try:
+            resp = requests.post(f"{API_URL}/agent/chat", json={"message": prompt})
+            if resp.status_code == 200:
+                response_data = resp.json()
+                reply = response_data.get("reply", "No response from agent.")
+                extracted_shifts = response_data.get("extracted_shifts")
+
+                # Display assistant response in chat message container
+                with st.chat_message("assistant"):
+                    st.markdown(reply)
+
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": reply})
+
+                if extracted_shifts:
+                    new_df = pd.DataFrame(extracted_shifts)
+                    st.session_state['shift_config_df'] = new_df
+                    st.toast("✅ Configuration Auto-Updated!", icon="✅")
+                    # Force rerun to update configuration tab?
+                    # Streamlit updates state immediately, but UI might need rerun to reflect in other tabs immediately if they are visible.
+                    # Since we are in a different tab, the update will be visible when the user switches back.
+            else:
+                st.error(f"Error communicating with agent: {resp.text}")
+        except Exception as e:
+            st.error(f"Connection Error: {e}")

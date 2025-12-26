@@ -3,7 +3,7 @@ uvicorn
 pandas
 numpy
 streamlit
-ortools
+ortools==9.9.3963
 sentence-transformers
 faiss-cpu
 pydantic
@@ -11,3 +11,5 @@ python-multipart
 plotly
 watchdog
 mlflow
+google-generativeai
+protobuf==5.29.5
