@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/163ed90791fb4048a9a23154a3dd055a/artifacts
+end_time: 1764742007421
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: 163ed90791fb4048a9a23154a3dd055a
+run_name: skillful-frog-894
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764742006405
+status: 3
+tags: []
+user_id: javinlim

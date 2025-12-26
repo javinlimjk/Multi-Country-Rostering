@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/d5adde119de44e0fa4aa5e38effce7b8/artifacts
+end_time: 1765099781967
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: d5adde119de44e0fa4aa5e38effce7b8
+run_name: beautiful-auk-672
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765099781899
+status: 3
+tags: []
+user_id: javinlim

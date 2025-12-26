@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/bddab1d6561a4cec985e7a1213f5b874/artifacts
+end_time: 1764742043542
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: bddab1d6561a4cec985e7a1213f5b874
+run_name: funny-quail-727
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764742042545
+status: 3
+tags: []
+user_id: javinlim

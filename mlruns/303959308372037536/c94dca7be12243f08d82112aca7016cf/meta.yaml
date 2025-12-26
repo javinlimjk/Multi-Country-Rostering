@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/c94dca7be12243f08d82112aca7016cf/artifacts
+end_time: 1765099743495
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: c94dca7be12243f08d82112aca7016cf
+run_name: classy-bug-24
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765099710211
+status: 4
+tags: []
+user_id: javinlim

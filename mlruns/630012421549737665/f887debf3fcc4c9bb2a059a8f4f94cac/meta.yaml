@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/f887debf3fcc4c9bb2a059a8f4f94cac/artifacts
+end_time: 1764742063174
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: f887debf3fcc4c9bb2a059a8f4f94cac
+run_name: trusting-shad-501
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764742062179
+status: 3
+tags: []
+user_id: javinlim

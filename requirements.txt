@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pandas
+numpy
+streamlit
+ortools
+sentence-transformers
+faiss-cpu
+pydantic
+python-multipart
+plotly
+watchdog
+mlflow

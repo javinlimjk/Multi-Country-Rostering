@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/264e57665dd54c559c141d6657940bb6/artifacts
+end_time: 1764741916087
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: 264e57665dd54c559c141d6657940bb6
+run_name: gifted-sponge-504
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764741915108
+status: 3
+tags: []
+user_id: javinlim

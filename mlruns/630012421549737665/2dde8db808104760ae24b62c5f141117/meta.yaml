@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/2dde8db808104760ae24b62c5f141117/artifacts
+end_time: 1764742048707
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: 2dde8db808104760ae24b62c5f141117
+run_name: delightful-vole-924
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764742047698
+status: 3
+tags: []
+user_id: javinlim

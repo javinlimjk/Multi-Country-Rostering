@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/0fb65b6611be49e6a4ee98c7600958fb/artifacts
+end_time: 1764879817374
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 0fb65b6611be49e6a4ee98c7600958fb
+run_name: honorable-snipe-78
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764879817030
+status: 3
+tags: []
+user_id: javinlim

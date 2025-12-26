@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/9d38ac4505484bbbb9f941296f8ef780/artifacts
+end_time: 1764880315801
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 9d38ac4505484bbbb9f941296f8ef780
+run_name: languid-snipe-236
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764880314927
+status: 4
+tags: []
+user_id: javinlim

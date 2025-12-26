@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/53c4806859004b8d91d37002e4f42e73/artifacts
+end_time: 1764872884752
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 53c4806859004b8d91d37002e4f42e73
+run_name: mercurial-cow-738
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764872883516
+status: 3
+tags: []
+user_id: javinlim

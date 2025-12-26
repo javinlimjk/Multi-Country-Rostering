@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/af4330d6296641b69cc2e510717cd349/artifacts
+end_time: 1764874757869
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: af4330d6296641b69cc2e510717cd349
+run_name: rambunctious-ox-760
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764874755751
+status: 3
+tags: []
+user_id: javinlim

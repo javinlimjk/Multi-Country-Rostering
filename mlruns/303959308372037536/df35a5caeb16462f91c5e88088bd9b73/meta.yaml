@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/df35a5caeb16462f91c5e88088bd9b73/artifacts
+end_time: 1765082204012
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: df35a5caeb16462f91c5e88088bd9b73
+run_name: gaudy-grub-680
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765082178967
+status: 3
+tags: []
+user_id: javinlim

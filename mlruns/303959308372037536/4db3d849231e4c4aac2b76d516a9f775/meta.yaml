@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/4db3d849231e4c4aac2b76d516a9f775/artifacts
+end_time: 1765094345927
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 4db3d849231e4c4aac2b76d516a9f775
+run_name: redolent-yak-563
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765094345862
+status: 3
+tags: []
+user_id: javinlim

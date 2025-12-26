@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/ef635fad925044c983beb1fb67974297/artifacts
+end_time: 1764875365692
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: ef635fad925044c983beb1fb67974297
+run_name: masked-rat-857
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764875365627
+status: 3
+tags: []
+user_id: javinlim

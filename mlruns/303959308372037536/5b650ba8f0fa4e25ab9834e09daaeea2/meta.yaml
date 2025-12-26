@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/5b650ba8f0fa4e25ab9834e09daaeea2/artifacts
+end_time: 1766461294329
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 5b650ba8f0fa4e25ab9834e09daaeea2
+run_name: incongruous-fly-840
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1766461294072
+status: 3
+tags: []
+user_id: root

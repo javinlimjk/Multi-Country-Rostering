@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/da5329f2fbcb4e24926a53d953dd0b75/artifacts
+end_time: 1764744135644
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: da5329f2fbcb4e24926a53d953dd0b75
+run_name: angry-fox-175
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764744135276
+status: 3
+tags: []
+user_id: javinlim

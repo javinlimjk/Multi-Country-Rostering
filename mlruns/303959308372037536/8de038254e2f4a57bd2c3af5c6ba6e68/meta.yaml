@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/8de038254e2f4a57bd2c3af5c6ba6e68/artifacts
+end_time: 1765358230850
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 8de038254e2f4a57bd2c3af5c6ba6e68
+run_name: puzzled-mole-900
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765358230401
+status: 3
+tags: []
+user_id: root

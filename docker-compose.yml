@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: sats_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app # Live reload logic
+      - ./data:/app/data
+      - ./mlruns:/app/mlruns
+
+  frontend:
+    build: .
+    container_name: sats_frontend
+    command: streamlit run frontend/dashboard.py
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app/frontend
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: sats_mlflow
+    ports:
+      - "5001:5000"
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
+    volumes:
+      - ./mlruns:/mlruns

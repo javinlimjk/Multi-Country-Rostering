@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/6aabde60cf204a17a69dbdd03e38bc31/artifacts
+end_time: 1764873902199
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 6aabde60cf204a17a69dbdd03e38bc31
+run_name: skillful-goose-946
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764873899744
+status: 3
+tags: []
+user_id: javinlim

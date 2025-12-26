@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/630012421549737665/d23e93bacd8d4b0dbcc72fda80e60fd8/artifacts
+end_time: 1764742051718
+entry_point_name: ''
+experiment_id: '630012421549737665'
+lifecycle_stage: active
+run_id: d23e93bacd8d4b0dbcc72fda80e60fd8
+run_name: marvelous-slug-300
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764742050708
+status: 3
+tags: []
+user_id: javinlim

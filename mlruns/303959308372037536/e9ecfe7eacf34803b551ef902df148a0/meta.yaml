@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/e9ecfe7eacf34803b551ef902df148a0/artifacts
+end_time: 1764879478258
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: e9ecfe7eacf34803b551ef902df148a0
+run_name: invincible-lamb-606
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764879477887
+status: 3
+tags: []
+user_id: javinlim

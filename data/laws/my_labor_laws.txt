@@ -1,0 +1,14 @@
+[MY-ACT 1955 SECTION 60A] Maximum Hours of Work
+An employee shall not be required under his contract of service to work more than 8 hours in one day or 45 hours in one week.
+However, if the work is shift work, the employee may be required to work more than 8 hours a day, provided the average number of hours over any period of three weeks does not exceed 48 hours per week.
+
+[MY-ACT 1955 SECTION 59] Rest Days
+Every employee shall be allowed in each week a rest day of one whole day.
+For shift workers, a continuous period of not less than 30 hours shall constitute a rest day.
+
+[MY-ACT 1955 SECTION 60C] Shift Work
+An employee who is engaged in shift work may be required to work for more than 8 hours a day or more than 48 hours in a week, but the average number of hours worked over any period of 3 weeks shall not exceed 48 hours per week.
+No employee shall work for more than 12 consecutive hours in any one day.
+
+[MY-FATIGUE POLICY] Minimum Rest
+To ensure safety in ground handling operations, a minimum rest period of 11 hours is mandated between the end of one duty period and the start of the next.

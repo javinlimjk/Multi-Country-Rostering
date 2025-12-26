@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/1103716db20744efb828609cc1312ce5/artifacts
+end_time: 1765094300576
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 1103716db20744efb828609cc1312ce5
+run_name: awesome-finch-575
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765094300510
+status: 3
+tags: []
+user_id: javinlim

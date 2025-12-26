@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/8ba1aaab40df4e27bd066eaddd4d6c17/artifacts
+end_time: 1765097677209
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 8ba1aaab40df4e27bd066eaddd4d6c17
+run_name: funny-toad-434
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765097677079
+status: 3
+tags: []
+user_id: javinlim

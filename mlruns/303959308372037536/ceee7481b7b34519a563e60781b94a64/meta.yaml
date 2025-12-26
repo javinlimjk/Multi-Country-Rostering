@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/ceee7481b7b34519a563e60781b94a64/artifacts
+end_time: 1765097730611
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: ceee7481b7b34519a563e60781b94a64
+run_name: upset-gull-874
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1765097728086
+status: 3
+tags: []
+user_id: javinlim
