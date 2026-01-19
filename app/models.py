@@ -25,7 +25,7 @@ class Shift(BaseModel):
     type: str  # "Morning", "Night"
     start_time: int
     end_time: int
-    duration_hours: int
+    duration_hours: float
     required_staff_count: int = 1
 
 class RosterAssignment(BaseModel):

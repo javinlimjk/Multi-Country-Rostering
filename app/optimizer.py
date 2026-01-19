@@ -6,14 +6,59 @@ from datetime import date, timedelta
 import time
 
 class RosterOptimizer:
-    def __init__(self, staff_list: list[Staff], shifts: list[Shift], rules: dict = None):
+    def __init__(self, staff_list: list[Staff], shifts: list[Shift], rules: dict = None, demand_signal: dict = None):
         self.staff_list = staff_list
-        self.shifts = shifts
+        # If demand_signal is provided, generate shifts from it
+        if demand_signal:
+            self.shifts = self._generate_shifts_from_demand(demand_signal)
+        else:
+            self.shifts = shifts
+
         # Default rules if none provided
         self.rules = rules if rules else {'min_rest_hours': 10, 'max_consecutive_days': 6, 'max_weekly_hours': 44}
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         self.assignments = {} 
+
+    def _generate_shifts_from_demand(self, demand_signal):
+        """
+        Converts demand signal {"08:00": 5, "08:30": 6} into Shift objects.
+        Strategy: Create shifts for each demand slot.
+        This effectively creates a 'task' based roster.
+        """
+        generated_shifts = []
+        today_str = date.today().isoformat() # Use today as default date for generated shifts
+
+        for time_str, count in demand_signal.items():
+            if count <= 0: continue
+
+            # Parse start time
+            try:
+                h, m = map(int, time_str.split(':'))
+                start_t = h * 100 + m
+                # Assume 30 min duration for each slot from demand planner
+                # This aligns with the bucket logic in demand_planner
+                end_t = start_t + 30
+                if end_t % 100 >= 60: # Handle hour rollover
+                    end_t = (end_t // 100 + 1) * 100 + (end_t % 100 - 60)
+
+                # Create 'count' number of shifts for this slot
+                # Each shift needs 1 person
+                for i in range(count):
+                    shift = Shift(
+                        id=f"GEN_{time_str}_{i}",
+                        date=today_str,
+                        type="Generated",
+                        start_time=start_t,
+                        end_time=end_t,
+                        duration_hours=0.5, # 30 mins
+                        required_staff_count=1
+                    )
+                    generated_shifts.append(shift)
+            except Exception as e:
+                print(f"Error generating shift for {time_str}: {e}")
+
+        return generated_shifts
 
     def solve(self):
         start_time = time.time()
