@@ -523,16 +523,47 @@ with tab_ops:
                 try:
                     resp = requests.post(f"{API_URL}/validate", json=payload)
                     if resp.status_code == 200:
-                        errors = resp.json()['errors']
-                        st.session_state['validation_errors'] = errors
+                        result = resp.json()
+                        # Handle new technical errors format
+                        tech_errors = result.get('technical_errors', result.get('errors', []))
+                        audit = result.get('compliance_audit')
+
+                        st.session_state['validation_errors'] = tech_errors
+                        st.session_state['audit_report'] = audit
                         st.session_state['current_assignments'] = user_assignments
-                        if not errors:
+
+                        if not tech_errors and (not audit or audit.get('verdict') == "PASS"):
                             st.balloons()
                             st.success("100% Compliant.")
-                        else: st.toast(f"Found {len(errors)} Violations", icon="⚠️")
-                except: st.error("Validation Failed")
+                        else:
+                            st.toast("Issues Found", icon="⚠️")
+                except Exception as e: st.error(f"Validation Failed: {e}")
 
+            # AI Audit Report Display
+            if st.session_state.get('audit_report'):
+                audit = st.session_state['audit_report']
+
+                # Verdict Badge
+                verdict = audit.get('verdict', 'UNKNOWN')
+                v_color = "green" if verdict == "PASS" else "orange" if verdict == "WARNING" else "red"
+                st.markdown(f":{v_color}[**AI Verdict: {verdict}**]")
+                st.caption(audit.get('summary'))
+
+                with st.expander("📄 AI Audit Details", expanded=True):
+                    for v in audit.get('violations', []):
+                        st.markdown(f"**{v['type']}** ({v['severity']})")
+                        st.write(v['description'])
+                        st.caption(f"📜 Citation: *{v.get('legal_citation')}*")
+                        st.divider()
+
+                    if audit.get('recommendations'):
+                        st.markdown("**Recommendations:**")
+                        for rec in audit['recommendations']:
+                            st.markdown(f"- {rec}")
+
+            # Legacy/Technical Errors Display
             if st.session_state['validation_errors']:
+                st.subheader("Technical Violations")
                 for i, err in enumerate(st.session_state['validation_errors']):
                     with st.container(border=True):
                         st.markdown(f"**{err['type']}**")

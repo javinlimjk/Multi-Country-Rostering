@@ -121,11 +121,24 @@ def generate_roster(payload: OptimizeRequest):
 
 @app.post("/validate")
 def validate_roster(payload: ValidateRequest):
+    # 1. Technical Check (Hard Constraints) via Optimizer
     rules = get_rules_for_country(payload.country)
-    opt = RosterOptimizer([], [], rules) 
-    # Pass dummy lists to init optimizer just for validation access
-    errors = opt.validate_roster(payload.assignments, payload.shift_definitions)
-    return {"errors": errors}
+    opt = RosterOptimizer([], [], rules)
+    technical_errors = opt.validate_roster(payload.assignments, payload.shift_definitions)
+
+    # 2. AI Compliance Audit (Nuanced Checks)
+    audit_report = None
+    if compliance_engine:
+        audit_report = compliance_engine.audit_roster(
+            payload.assignments,
+            payload.shift_definitions,
+            country_code=payload.country
+        )
+
+    return {
+        "technical_errors": technical_errors,
+        "compliance_audit": audit_report
+    }
 
 @app.post("/recommend")
 def recommend_staff(payload: RecommendationRequest):
