@@ -74,6 +74,7 @@ class MetricsRequest(BaseModel):
 
 class AgentChatRequest(BaseModel):
     message: str
+    state: Optional[Dict[str, Any]] = None
 
 # --- ENDPOINTS ---
 
@@ -184,7 +185,7 @@ def search_laws(query: str, country: str = "SG"): # Added country param
 @app.post("/agent/chat")
 def agent_chat(payload: AgentChatRequest):
     agent = SchedulingAgent()
-    return agent.process_message(payload.message)
+    return agent.process_message(payload.message, current_state=payload.state)
 
 @app.get("/demand/{airport_code}")
 def get_demand(airport_code: str):

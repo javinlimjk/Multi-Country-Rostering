@@ -643,9 +643,14 @@ with tab_legal:
 with tab_chat:
     st.header("💬 AI Assistant")
 
-    # Initialize chat history
+    # Initialize chat history and state
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    if "roster_state" not in st.session_state:
+        st.session_state.roster_state = {
+            "shift_name": None, "start_time": None, "duration": None, "staff_needed": None, "dates": None
+        }
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -660,26 +665,52 @@ with tab_chat:
         st.session_state.messages.append({"role": "user", "content": prompt})
 
         try:
-            resp = requests.post(f"{API_URL}/agent/chat", json={"message": prompt})
+            payload = {
+                "message": prompt,
+                "state": st.session_state.roster_state
+            }
+            resp = requests.post(f"{API_URL}/agent/chat", json=payload)
+
             if resp.status_code == 200:
                 response_data = resp.json()
                 reply = response_data.get("reply", "No response from agent.")
-                extracted_shifts = response_data.get("extracted_shifts")
+                updated_state = response_data.get("updated_state")
+                is_complete = response_data.get("is_complete", False)
+
+                # Update State
+                if updated_state:
+                    st.session_state.roster_state = updated_state
 
                 # Display assistant response in chat message container
                 with st.chat_message("assistant"):
                     st.markdown(reply)
+                    if updated_state:
+                        with st.expander("Current Draft"):
+                            st.json(updated_state)
 
                 # Add assistant response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
-                if extracted_shifts:
-                    new_df = pd.DataFrame(extracted_shifts)
+                # If complete, we can auto-update the config
+                if is_complete and "yes" in prompt.lower():
+                    # Map state to DataFrame format
+                    s = st.session_state.roster_state
+                    new_shift = {
+                        "Name": s['shift_name'],
+                        "Start Time": s['start_time'],
+                        "Duration": s['duration'],
+                        "Staff Needed": s['staff_needed']
+                    }
+                    # Append or Replace? For now, let's append to the dataframe
+                    current_df = st.session_state['shift_config_df']
+                    new_df = pd.concat([current_df, pd.DataFrame([new_shift])], ignore_index=True)
                     st.session_state['shift_config_df'] = new_df
                     st.toast("✅ Configuration Auto-Updated!", icon="✅")
-                    # Force rerun to update configuration tab?
-                    # Streamlit updates state immediately, but UI might need rerun to reflect in other tabs immediately if they are visible.
-                    # Since we are in a different tab, the update will be visible when the user switches back.
+
+                    # Reset State for next task
+                    st.session_state.roster_state = {
+                        "shift_name": None, "start_time": None, "duration": None, "staff_needed": None, "dates": None
+                    }
             else:
                 st.error(f"Error communicating with agent: {resp.text}")
         except Exception as e:
