@@ -3,10 +3,13 @@ version: '3.8'
 services:
   backend:
     build: .
-    container_name: sats_backend
+    container_name: sats_backend_2
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - FLIGHT_API_KEY=${FLIGHT_API_KEY}
     volumes:
       - ./app:/app/app # Live reload logic
       - ./data:/app/data
@@ -14,7 +17,7 @@ services:
 
   frontend:
     build: .
-    container_name: sats_frontend
+    container_name: sats_frontend_2
     command: streamlit run frontend/dashboard.py
     ports:
       - "8501:8501"
@@ -27,7 +30,7 @@ services:
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
-    container_name: sats_mlflow
+    container_name: sats_mlflow_2
     ports:
       - "5001:5000"
     command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns

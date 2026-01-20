@@ -25,7 +25,7 @@ Output a JSON object with two keys:
 If the user provided shifts but NO dates, set 'reply' to: 'I have updated the shift patterns. What dates should I generate this for?'"""
 
         # Initialize the model
-        self.model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_instruction)
+        self.model = genai.GenerativeModel("gemini-flash-latest", system_instruction=system_instruction)
 
     def process_message(self, user_text: str):
         try:
