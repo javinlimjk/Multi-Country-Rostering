@@ -648,8 +648,11 @@ with tab_chat:
         st.session_state.messages = []
 
     if "roster_state" not in st.session_state:
+        # Initialize empty RosterState dict structure
         st.session_state.roster_state = {
-            "shift_name": None, "start_time": None, "duration": None, "staff_needed": None, "dates": None
+            "shifts": [],
+            "month_year": None,
+            "location": "Singapore"
         }
 
     # Display chat messages from history on app rerun
@@ -695,21 +698,28 @@ with tab_chat:
                 if is_complete and "yes" in prompt.lower():
                     # Map state to DataFrame format
                     s = st.session_state.roster_state
-                    new_shift = {
-                        "Name": s['shift_name'],
-                        "Start Time": s['start_time'],
-                        "Duration": s['duration'],
-                        "Staff Needed": s['staff_needed']
-                    }
-                    # Append or Replace? For now, let's append to the dataframe
-                    current_df = st.session_state['shift_config_df']
-                    new_df = pd.concat([current_df, pd.DataFrame([new_shift])], ignore_index=True)
-                    st.session_state['shift_config_df'] = new_df
-                    st.toast("✅ Configuration Auto-Updated!", icon="✅")
+                    shifts_data = s.get('shifts', [])
+
+                    new_rows = []
+                    for shift in shifts_data:
+                        new_rows.append({
+                            "Name": shift['name'],
+                            "Start Time": shift['start_time'],
+                            "Duration": shift['duration_hours'],
+                            "Staff Needed": shift['staff_needed']
+                        })
+
+                    if new_rows:
+                        current_df = st.session_state['shift_config_df']
+                        new_df = pd.concat([current_df, pd.DataFrame(new_rows)], ignore_index=True)
+                        st.session_state['shift_config_df'] = new_df
+                        st.toast("✅ Configuration Auto-Updated!", icon="✅")
 
                     # Reset State for next task
                     st.session_state.roster_state = {
-                        "shift_name": None, "start_time": None, "duration": None, "staff_needed": None, "dates": None
+                        "shifts": [],
+                        "month_year": None,
+                        "location": "Singapore"
                     }
             else:
                 st.error(f"Error communicating with agent: {resp.text}")

@@ -2,11 +2,12 @@ import google.generativeai as genai
 import os
 import json
 from typing import Optional, Dict, Any
+from app.state import RosterState
 
 class SchedulingAgent:
     """
     A conversational agent powered by Google Gemini to assist in roster configuration.
-    Uses a stateful approach to incrementally gather shift details.
+    Uses a stateful approach to incrementally gather shift details using Pydantic models.
     """
 
     def __init__(self):
@@ -22,14 +23,13 @@ class SchedulingAgent:
         self.model_name = "gemini-1.5-flash-001"
         self.model = genai.GenerativeModel(self.model_name)
 
-    def process_message(self, user_text: str, current_state: Dict[str, Any] = None) -> dict:
+    def process_message(self, user_text: str, current_state_dict: Dict[str, Any] = None) -> dict:
         """
         Process a natural language message from the user, updating the roster state.
 
         Args:
             user_text (str): The user's input message.
-            current_state (dict): The current state of the roster draft.
-                                  Structure: {'shift_name': ..., 'start_time': ..., 'duration': ..., 'staff_needed': ..., 'dates': ...}
+            current_state_dict (dict): The current state of the roster draft (dict representation of RosterState).
 
         Returns:
             dict: A dictionary containing:
@@ -37,44 +37,44 @@ class SchedulingAgent:
                 - 'updated_state': The updated state dictionary.
                 - 'is_complete': Boolean indicating if all fields are filled.
         """
-        if current_state is None:
-            current_state = {
-                "shift_name": None,
-                "start_time": None,
-                "duration": None,
-                "staff_needed": None,
-                "dates": None
-            }
+        # Load state
+        if current_state_dict:
+            try:
+                state = RosterState(**current_state_dict)
+            except Exception:
+                state = RosterState()
+        else:
+            state = RosterState()
+
+        missing = state.missing_fields()
+        is_complete_check = len(missing) == 0
 
         # System Instruction for the LLM
-        # We explicitly guide it to ONLY extract new info and merge with existing state
         system_prompt = f"""
         You are a Roster Configuration Assistant. Your goal is to help the user define a shift pattern.
 
-        ### CURRENT STATE
-        {json.dumps(current_state, indent=2)}
+        ### CURRENT STATE (JSON)
+        {state.model_dump_json(indent=2)}
+
+        ### MISSING INFORMATION
+        {missing}
 
         ### INSTRUCTIONS
-        1. Analyze the USER INPUT to extract NEW values for the missing fields.
-        2. 'start_time' should be in 24-hour format (e.g., 800 for 08:00, 2300 for 23:00).
-        3. 'duration' should be in hours.
-        4. If the user provides a value that is already in CURRENT STATE, update it only if the user explicitly changes it.
-        5. DO NOT ask for fields that are already filled (not null).
-        6. If all fields are filled, set "is_complete" to true and ask for final confirmation to generate the roster.
-        7. If fields are missing, ask specifically for them.
+        1. **Extraction**: Analyze the USER INPUT to extract NEW values.
+           - If the user provides shift details, add them to the 'shifts' list.
+           - If the user provides a month/year, update 'month_year'.
+           - 'start_time' must be int (e.g. 800). 'duration_hours' must be int.
 
-        ### OUTPUT FORMAT (JSON ONLY)
-        {{
-            "updated_state": {{
-                "shift_name": "...",
-                "start_time": 800,
-                "duration": 8,
-                "staff_needed": 5,
-                "dates": "..."
-            }},
-            "reply": "Natural language response asking for missing fields or confirming readiness.",
-            "is_complete": true/false
-        }}
+        2. **Logic**:
+           - DO NOT ask for fields that are already in CURRENT STATE.
+           - ONLY ask for items listed in MISSING INFORMATION.
+           - If MISSING INFORMATION is empty, summarize the extracted data and ask for final confirmation (e.g. "Everything is ready. Shall I generate the roster for [month_year]?").
+
+        3. **Output Format**:
+           Return a JSON object with:
+           - "updated_state": The full updated state object matching the RosterState structure.
+           - "reply": Your natural language response to the user.
+           - "is_complete": Boolean (true if no missing info, else false).
         """
 
         try:
@@ -84,10 +84,22 @@ class SchedulingAgent:
                 full_prompt,
                 generation_config={"response_mime_type": "application/json"}
             )
-            return json.loads(response.text)
+            result = json.loads(response.text)
+
+            # Validate return structure
+            updated_state_dict = result.get("updated_state", state.model_dump())
+            reply = result.get("reply", "I processed your request.")
+            is_complete = result.get("is_complete", False)
+
+            return {
+                "reply": reply,
+                "updated_state": updated_state_dict,
+                "is_complete": is_complete
+            }
+
         except Exception as e:
             return {
                 "reply": f"Sorry, I encountered an error processing your request: {str(e)}",
-                "updated_state": current_state,
+                "updated_state": state.model_dump(),
                 "is_complete": False
             }
