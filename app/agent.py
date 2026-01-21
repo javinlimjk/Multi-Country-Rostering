@@ -51,7 +51,7 @@ class SchedulingAgent:
 
         # System Instruction for the LLM
         system_prompt = f"""
-        You are a Roster Configuration Assistant. Your goal is to help the user define a shift pattern.
+        You are a Roster Configuration Assistant. Your goal is to help the user define a shift pattern AND trigger forecast or optimization actions.
 
         ### CURRENT STATE (JSON)
         {state.model_dump_json(indent=2)}
@@ -71,13 +71,18 @@ class SchedulingAgent:
         2. **Conversational Logic**:
            - DO NOT ask for fields that are already in `CURRENT STATE`.
            - ONLY ask for items listed in `MISSING INFORMATION` (if they are null in the state).
-           - If `MISSING INFORMATION` is empty, summarize the extracted data and ask for final confirmation (e.g. "Everything is ready. Shall I generate the roster for [month_year]?").
+           - If `MISSING INFORMATION` is empty, summarize the extracted data.
+           - **Action Detection**:
+             - If the user asks to "forecast", "calculate requirements", "predict demand", or "how many staff do I need", set "action" to "FORECAST".
+             - If the user asks to "generate roster", "optimize", "create schedule", "build roster", set "action" to "GENERATE".
+             - Otherwise, "action" should be null.
 
         3. **Output Format**:
            Return a JSON object with:
            - "updated_state": The FULL updated state object (including OLD and NEW data) matching the RosterState structure.
            - "reply": Your natural language response to the user.
            - "is_complete": Boolean (true if no missing info, else false).
+           - "action": String | null ("FORECAST" or "GENERATE").
         """
 
         try:
@@ -93,16 +98,19 @@ class SchedulingAgent:
             updated_state_dict = result.get("updated_state", state.model_dump())
             reply = result.get("reply", "I processed your request.")
             is_complete = result.get("is_complete", False)
+            action = result.get("action", None)
 
             return {
                 "reply": reply,
                 "updated_state": updated_state_dict,
-                "is_complete": is_complete
+                "is_complete": is_complete,
+                "action": action
             }
 
         except Exception as e:
             return {
                 "reply": f"Sorry, I encountered an error processing your request: {str(e)}",
                 "updated_state": state.model_dump(),
-                "is_complete": False
+                "is_complete": False,
+                "action": None
             }

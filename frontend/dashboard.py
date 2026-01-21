@@ -138,6 +138,78 @@ def refresh_metrics():
                 st.session_state['last_metrics'] = resp.json()
         except: pass
 
+# --- SHARED: EXECUTION LOGIC (Forecast/Optimize) ---
+def run_forecast(days_count, buffer_pct, country_enum):
+    """Execution logic for Forecast/Demand Planning"""
+    clean_inputs = st.session_state['shift_config_df'].to_dict('records')
+    payload = {
+        "shift_inputs": clean_inputs,
+        "days": days_count,
+        "country": country_enum,
+        "buffer": buffer_pct
+    }
+    try:
+        resp = requests.post(f"{API_URL}/forecast", json=payload)
+        if resp.status_code == 200:
+            res = resp.json()
+            st.session_state['forecast_res'] = res
+            return True, res
+        else:
+            return False, f"Forecast Failed: {resp.text}"
+    except Exception as e:
+        return False, str(e)
+
+def run_optimization(start_date, days_count, country_enum):
+    """Execution logic for Roster Generation"""
+    staff_payload = st.session_state['staff_db']
+    shifts = []
+    config = st.session_state['shift_config_df'].to_dict('records')
+
+    for d in range(days_count):
+        curr = start_date + timedelta(days=d)
+        curr_str = curr.isoformat()
+        for item in config:
+            try:
+                count = int(item["Staff Needed"])
+                end_t = (int(item["Start Time"]) + (int(item["Duration"])*100)) % 2400
+                for i in range(count):
+                    shifts.append({
+                        "id": f"{item['Name']}_{d}_{i}",
+                        "date": curr_str,
+                        "type": item['Name'],
+                        "start_time": int(item["Start Time"]),
+                        "end_time": end_t,
+                        "duration_hours": int(item["Duration"]),
+                        "required_staff_count": 1
+                    })
+            except: continue
+
+    payload = {
+        "staff": staff_payload,
+        "shifts": shifts,
+        "country": country_enum,
+        "rules": st.session_state.get('custom_rules')
+    }
+
+    try:
+        resp = requests.post(f"{API_URL}/optimize", json=payload)
+        if resp.status_code == 200:
+            result = resp.json()
+            st.session_state['last_metrics'] = result['metrics']
+
+            data = [{"Date": x['date'], "Staff": x['staff_id'], "Shift": x['shift_type']} for x in result['assignments']]
+            df = pd.DataFrame(data)
+            pivot = df.pivot(index="Staff", columns="Date", values="Shift").fillna("Off")
+
+            st.session_state['roster_data'] = pivot
+            st.session_state['last_staff_list'] = staff_payload
+            st.session_state['validation_errors'] = []
+            return True, "Roster Generated Successfully"
+        else:
+            return False, f"Optimization Failed: {resp.text}"
+    except Exception as e:
+        return False, f"API Error: {e}"
+
 COUNTRY_MAP = {
     "Singapore": "SG",
     "Malaysia": "MY",
@@ -226,22 +298,12 @@ with tab_config:
                 if st.session_state['cal_days'] == 0:
                     st.error("Invalid Date Range")
                 else:
-                    clean_inputs = st.session_state['shift_config_df'].to_dict('records')
-                    payload = {
-                        "shift_inputs": clean_inputs, 
-                        "days": st.session_state['cal_days'],
-                        "country": country_enum, 
-                        "buffer": buffer_pct / 100.0
-                    }
                     with st.spinner("Running Monte Carlo Simulation..."):
-                        try:
-                            resp = requests.post(f"{API_URL}/forecast", json=payload)
-                            if resp.status_code == 200:
-                                res = resp.json()
-                                st.session_state['forecast_res'] = res
-                                st.toast("Calculation Complete", icon="✅")
-                            else: st.error(f"Forecast Failed: {resp.text}")
-                        except Exception as e: st.error(f"Connection Error: {e}")
+                        success, res = run_forecast(st.session_state['cal_days'], buffer_pct/100.0, country_enum)
+                        if success:
+                            st.toast("Calculation Complete", icon="✅")
+                        else:
+                            st.error(res)
 
             # 3. RESULTS
             if 'forecast_res' in st.session_state:
@@ -314,56 +376,14 @@ with tab_config:
                             st.error("Cannot generate: Staff count is below mathematical minimum.")
                         else:
                             with st.spinner("Generating Assignments..."):
-                                # USE REAL STAFF FROM DB
-                                staff_payload = st.session_state['staff_db']
-                                
-                                shifts = []
                                 gen_start = st.session_state.get('cal_start', date.today())
                                 gen_days = st.session_state.get('cal_days', 7)
-                                config = st.session_state['shift_config_df'].to_dict('records')
                                 
-                                for d in range(gen_days):
-                                    curr = gen_start + timedelta(days=d)
-                                    curr_str = curr.isoformat()
-                                    for item in config:
-                                        try:
-                                            count = int(item["Staff Needed"])
-                                            end_t = (int(item["Start Time"]) + (int(item["Duration"])*100)) % 2400
-                                            for i in range(count):
-                                                shifts.append({
-                                                    "id": f"{item['Name']}_{d}_{i}",
-                                                    "date": curr_str,
-                                                    "type": item['Name'],
-                                                    "start_time": int(item["Start Time"]),
-                                                    "end_time": end_t,
-                                                    "duration_hours": int(item["Duration"]),
-                                                    "required_staff_count": 1
-                                                })
-                                        except: continue
-
-                                payload = {
-                                    "staff": staff_payload, 
-                                    "shifts": shifts, 
-                                    "country": country_enum,
-                                    "rules": st.session_state.get('custom_rules')
-                                }
-                                
-                                try:
-                                    resp = requests.post(f"{API_URL}/optimize", json=payload)
-                                    if resp.status_code == 200:
-                                        result = resp.json()
-                                        st.session_state['last_metrics'] = result['metrics']
-                                        
-                                        data = [{"Date": x['date'], "Staff": x['staff_id'], "Shift": x['shift_type']} for x in result['assignments']]
-                                        df = pd.DataFrame(data)
-                                        pivot = df.pivot(index="Staff", columns="Date", values="Shift").fillna("Off")
-                                        
-                                        st.session_state['roster_data'] = pivot
-                                        st.session_state['last_staff_list'] = staff_payload
-                                        st.session_state['validation_errors'] = []
-                                        st.toast("Roster Generated!", icon="🚀")
-                                    else: st.error(f"Optimization Failed: {resp.text}")
-                                except Exception as e: st.error(f"API Error: {e}")
+                                success, msg = run_optimization(gen_start, gen_days, country_enum)
+                                if success:
+                                    st.toast("Roster Generated!", icon="🚀")
+                                else:
+                                    st.error(msg)
 # =========================================================
 # TAB 2: STAFF MANAGEMENT (NEW)
 # =========================================================
@@ -754,12 +774,68 @@ with tab_chat:
                         st.session_state['shift_config_df'] = new_df
                         st.toast("✅ Configuration Auto-Updated!", icon="✅")
 
-                    # Reset State for next task
-                    st.session_state.roster_state = {
-                        "shifts": [],
-                        "month_year": None,
-                        "location": "Singapore"
-                    }
+                # --- ACTION HANDLING ---
+                action = response_data.get("action")
+                if action == "FORECAST":
+                    # Update config first to ensure latest changes are used
+                    s = st.session_state.roster_state
+                    shifts_data = s.get('shifts', [])
+                    if shifts_data:
+                         new_rows = []
+                         for shift in shifts_data:
+                             new_rows.append({
+                                 "Name": shift['name'],
+                                 "Start Time": shift['start_time'],
+                                 "Duration": shift['duration_hours'],
+                                 "Staff Needed": shift['staff_needed']
+                             })
+                         st.session_state['shift_config_df'] = pd.DataFrame(new_rows)
+
+                    with st.spinner("🤖 Running AI Forecast..."):
+                        # Use default 7 days if not specified
+                        days = 7
+                        success, res = run_forecast(days, 0.15, "SG") # Default buffer 15%, SG
+                        if success:
+                            with st.chat_message("assistant"):
+                                st.success(f"Forecast Complete! Required: {res['min_staff']} | Safe: {res['rec_staff']}")
+                                st.metric("Recommended Staff", res['rec_staff'])
+                        else:
+                            with st.chat_message("assistant"):
+                                st.error(f"Forecast failed: {res}")
+
+                elif action == "GENERATE":
+                     # Ensure config is synced
+                    s = st.session_state.roster_state
+                    shifts_data = s.get('shifts', [])
+                    if shifts_data:
+                         new_rows = []
+                         for shift in shifts_data:
+                             new_rows.append({
+                                 "Name": shift['name'],
+                                 "Start Time": shift['start_time'],
+                                 "Duration": shift['duration_hours'],
+                                 "Staff Needed": shift['staff_needed']
+                             })
+                         st.session_state['shift_config_df'] = pd.DataFrame(new_rows)
+
+                    with st.spinner("🤖 Generating Roster..."):
+                        # Default start today, 7 days
+                        start = date.today()
+                        success, msg = run_optimization(start, 7, "SG")
+                        if success:
+                            with st.chat_message("assistant"):
+                                st.balloons()
+                                st.success("Roster Generated! View it in the 'Roster Ops' tab.")
+                                st.markdown("[Go to Roster Ops](#roster-operations-dashboard)")
+                        else:
+                            with st.chat_message("assistant"):
+                                st.error(f"Generation failed: {msg}")
+
+                if is_complete and action:
+                     # Reset if action was taken? Maybe keep it for reference.
+                     # Let's not reset immediately so user can see context.
+                     pass
+
             else:
                 st.error(f"Error communicating with agent: {resp.text}")
         except Exception as e:
