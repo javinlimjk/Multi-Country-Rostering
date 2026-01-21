@@ -641,7 +641,18 @@ with tab_legal:
 # TAB 5: AI ASSISTANT
 # =========================================================
 with tab_chat:
-    st.header("💬 AI Assistant")
+    c_head, c_reset = st.columns([4, 1])
+    with c_head:
+        st.header("💬 AI Assistant")
+    with c_reset:
+        if st.button("🔄 Reset Conversation"):
+            st.session_state.messages = []
+            st.session_state.roster_state = {
+                "shifts": [],
+                "month_year": None,
+                "location": "Singapore"
+            }
+            st.rerun()
 
     # Initialize chat history and state
     if "messages" not in st.session_state:
@@ -659,6 +670,34 @@ with tab_chat:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+
+    # Show Current Draft Status always if there's data
+    curr_state = st.session_state.roster_state
+    has_data = len(curr_state.get('shifts', [])) > 0 or curr_state.get('month_year')
+
+    if has_data:
+        with st.expander("📋 Current Draft Configuration", expanded=True):
+            col_meta, col_shifts = st.columns([1, 2])
+            with col_meta:
+                st.caption("Metadata")
+                st.write(f"**Period:** {curr_state.get('month_year', 'Not Set')}")
+                st.write(f"**Location:** {curr_state.get('location', 'Singapore')}")
+
+            with col_shifts:
+                st.caption("Extracted Shifts")
+                shifts = curr_state.get('shifts', [])
+                if shifts:
+                    s_df = pd.DataFrame(shifts)
+                    # Rename for display
+                    s_df = s_df.rename(columns={
+                        "name": "Shift Name",
+                        "start_time": "Start",
+                        "duration_hours": "Duration",
+                        "staff_needed": "Staff"
+                    })
+                    st.dataframe(s_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No shifts defined yet.")
 
     # React to user input
     if prompt := st.chat_input("Describe your shift changes..."):
@@ -687,12 +726,12 @@ with tab_chat:
                 # Display assistant response in chat message container
                 with st.chat_message("assistant"):
                     st.markdown(reply)
-                    if updated_state:
-                        with st.expander("Current Draft"):
-                            st.json(updated_state)
 
                 # Add assistant response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": reply})
+
+                # Force rerun to update the "Current Draft" expander at the top
+                st.rerun()
 
                 # If complete, we can auto-update the config
                 if is_complete and "yes" in prompt.lower():

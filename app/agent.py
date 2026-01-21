@@ -60,19 +60,22 @@ class SchedulingAgent:
         {missing}
 
         ### INSTRUCTIONS
-        1. **Extraction**: Analyze the USER INPUT to extract NEW values.
-           - If the user provides shift details, add them to the 'shifts' list.
+        1. **Extraction & State Management**:
+           - Analyze the USER INPUT to extract NEW values.
+           - MERGE new values with the `CURRENT STATE` provided above.
+           - **CRITICAL**: You must return the FULL cumulative state. Do NOT drop existing shifts or data from `CURRENT STATE` unless the user explicitly asks to "delete" or "reset" them.
+           - If the user provides shift details, append them to the 'shifts' list (or update if they are correcting a specific shift).
            - If the user provides a month/year, update 'month_year'.
            - 'start_time' must be int (e.g. 800). 'duration_hours' must be int.
 
-        2. **Logic**:
-           - DO NOT ask for fields that are already in CURRENT STATE.
-           - ONLY ask for items listed in MISSING INFORMATION.
-           - If MISSING INFORMATION is empty, summarize the extracted data and ask for final confirmation (e.g. "Everything is ready. Shall I generate the roster for [month_year]?").
+        2. **Conversational Logic**:
+           - DO NOT ask for fields that are already in `CURRENT STATE`.
+           - ONLY ask for items listed in `MISSING INFORMATION` (if they are null in the state).
+           - If `MISSING INFORMATION` is empty, summarize the extracted data and ask for final confirmation (e.g. "Everything is ready. Shall I generate the roster for [month_year]?").
 
         3. **Output Format**:
            Return a JSON object with:
-           - "updated_state": The full updated state object matching the RosterState structure.
+           - "updated_state": The FULL updated state object (including OLD and NEW data) matching the RosterState structure.
            - "reply": Your natural language response to the user.
            - "is_complete": Boolean (true if no missing info, else false).
         """
