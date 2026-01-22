@@ -84,8 +84,6 @@ class SchedulingAgent:
            - "is_complete": Boolean (true if no missing info, else false).
            - "action": String | null ("FORECAST" or "GENERATE").
         """
-        # Initialize the model
-        self.model = genai.GenerativeModel("gemini-flash-latest", system_instruction=system_instruction)
 
         try:
             full_prompt = f"{system_prompt}\n\nUSER INPUT: {user_text}"
