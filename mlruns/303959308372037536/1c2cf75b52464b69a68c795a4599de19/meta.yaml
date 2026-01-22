@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/javinlim/Documents/School/Year 3/Capstone/mlruns/303959308372037536/1c2cf75b52464b69a68c795a4599de19/artifacts
+end_time: 1768877025403
+entry_point_name: ''
+experiment_id: '303959308372037536'
+lifecycle_stage: active
+run_id: 1c2cf75b52464b69a68c795a4599de19
+run_name: kindly-frog-554
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1768877025286
+status: 3
+tags: []
+user_id: root
