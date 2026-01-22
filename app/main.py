@@ -13,6 +13,7 @@ from app.forecaster import StaffingForecaster
 from app.compliance import ComplianceEngine
 from app.rules import get_rules_for_country
 from app.agent import SchedulingAgent
+from app.demand_planner import FlightService, calculate_required_staff
 
 app = FastAPI(title="SATS Rostering API", version="6.0")
 
@@ -53,6 +54,7 @@ class OptimizeRequest(BaseModel):
     shifts: List[Shift]
     country: str 
     rules: Optional[Dict[str, Any]] = None # Allow frontend to override rules
+    demand_signal: Optional[Dict[str, int]] = None # Time-series demand { "08:00": 15 }
 
 class ValidateRequest(BaseModel):
     assignments: List[Dict[str, Any]]
@@ -72,6 +74,7 @@ class MetricsRequest(BaseModel):
 
 class AgentChatRequest(BaseModel):
     message: str
+    state: Optional[Dict[str, Any]] = None
 
 # --- ENDPOINTS ---
 
@@ -100,7 +103,8 @@ def generate_roster(payload: OptimizeRequest):
 
     print(f"Running Optimization for {len(payload.staff)} staff with rules: {rules}")
 
-    opt = RosterOptimizer(payload.staff, payload.shifts, rules)
+    # Pass demand_signal to optimizer
+    opt = RosterOptimizer(payload.staff, payload.shifts, rules, demand_signal=payload.demand_signal)
     
     # 3. Solve & Log
     with mlflow.start_run():
@@ -121,11 +125,24 @@ def generate_roster(payload: OptimizeRequest):
 
 @app.post("/validate")
 def validate_roster(payload: ValidateRequest):
+    # 1. Technical Check (Hard Constraints) via Optimizer
     rules = get_rules_for_country(payload.country)
-    opt = RosterOptimizer([], [], rules) 
-    # Pass dummy lists to init optimizer just for validation access
-    errors = opt.validate_roster(payload.assignments, payload.shift_definitions)
-    return {"errors": errors}
+    opt = RosterOptimizer([], [], rules)
+    technical_errors = opt.validate_roster(payload.assignments, payload.shift_definitions)
+
+    # 2. AI Compliance Audit (Nuanced Checks)
+    audit_report = None
+    if compliance_engine:
+        audit_report = compliance_engine.audit_roster(
+            payload.assignments,
+            payload.shift_definitions,
+            country_code=payload.country
+        )
+
+    return {
+        "technical_errors": technical_errors,
+        "compliance_audit": audit_report
+    }
 
 @app.post("/recommend")
 def recommend_staff(payload: RecommendationRequest):
@@ -168,4 +185,11 @@ def search_laws(query: str, country: str = "SG"): # Added country param
 @app.post("/agent/chat")
 def agent_chat(payload: AgentChatRequest):
     agent = SchedulingAgent()
-    return agent.process_message(payload.message)
+    return agent.process_message(payload.message, current_state=payload.state)
+
+@app.get("/demand/{airport_code}")
+def get_demand(airport_code: str):
+    service = FlightService()
+    flights = service.get_flights(airport_code)
+    demand = calculate_required_staff(flights)
+    return {"demand": demand}
