@@ -168,18 +168,21 @@ class RosterOptimizer:
                 self.model.Add(sum(worked_flags) <= max_d)
 
     def _apply_max_weekly_hours(self):
-        max_h = self.rules.get('max_weekly_hours', 44)
+        # Scale to minutes to work with integers for CP-SAT solver
+        max_minutes = int(self.rules.get('max_weekly_hours', 44) * 60)
         all_dates = sorted(list(set(s.date for s in self.shifts)))
         
         # Check every 7-day window
         for i in range(len(all_dates) - 6):
             window_dates = all_dates[i : i+7]
             for staff in self.staff_list:
-                hours_in_window = []
+                minutes_in_window = []
                 for shift in self.shifts:
                     if shift.date in window_dates:
-                        hours_in_window.append(self.assignments[(staff.id, shift.id)] * shift.duration_hours)
-                self.model.Add(sum(hours_in_window) <= max_h)
+                        # Convert shift duration (hours) to minutes (int)
+                        minutes = int(shift.duration_hours * 60)
+                        minutes_in_window.append(self.assignments[(staff.id, shift.id)] * minutes)
+                self.model.Add(sum(minutes_in_window) <= max_minutes)
 
     def _minimize_variance(self):
         # Calculate total shifts per staff
