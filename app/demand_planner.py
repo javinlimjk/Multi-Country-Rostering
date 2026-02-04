@@ -124,6 +124,31 @@ class FlightService:
 
         return flights
 
+def _distribute_demand(buckets, start_time, end_time, count):
+    """
+    Distributes 'count' staff demand to all 30-minute buckets overlapping with [start_time, end_time).
+    """
+    if count <= 0 or start_time >= end_time:
+        return
+
+    # Helper to snap to previous 30-min mark
+    def snap_to_bucket(t):
+        remainder = t.minute % 30
+        return t - timedelta(minutes=remainder, seconds=t.second, microseconds=t.microsecond)
+
+    start_bucket = snap_to_bucket(start_time)
+    # For end_time, we want the bucket that contains end_time - epsilon
+    # If end_time is 09:30, it stops exactly at start of 09:30 bucket, so it shouldn't count for 09:30.
+    # So we calculate bucket for (end_time - 1 microsecond)
+    end_bucket = snap_to_bucket(end_time - timedelta(microseconds=1))
+
+    # Iterate from start_bucket to end_bucket inclusive
+    curr = start_bucket
+    while curr <= end_bucket:
+        if curr in buckets:
+            buckets[curr] += count
+        curr += timedelta(minutes=30)
+
 def calculate_required_staff(flights):
     """
     Converts a list of flights into a time-series demand signal.
@@ -176,17 +201,7 @@ def calculate_required_staff(flights):
 
         # Add to buckets
         # Quantize to 30 min
-        curr = start_task
-        while curr < end_task:
-            # Find nearest bucket
-            # Round down to nearest 30
-            remainder = curr.minute % 30
-            bucket_time = curr - timedelta(minutes=remainder, seconds=curr.second, microseconds=curr.microsecond)
-
-            if bucket_time in buckets:
-                buckets[bucket_time] += needed
-
-            curr += timedelta(minutes=30)
+        _distribute_demand(buckets, start_task, end_task, needed)
 
         # 2. Check-in Demand (Departures only)
         if f['type'] == 'departure':
@@ -194,14 +209,7 @@ def calculate_required_staff(flights):
             ci_start = f_time + timedelta(minutes=STAFFING_CONFIG['check_in']['window_offset_minutes'])
             ci_end = ci_start + timedelta(minutes=STAFFING_CONFIG['check_in']['window_minutes'])
 
-            curr = ci_start
-            while curr < ci_end:
-                remainder = curr.minute % 30
-                bucket_time = curr - timedelta(minutes=remainder, seconds=curr.second, microseconds=curr.microsecond)
-
-                if bucket_time in buckets:
-                    buckets[bucket_time] += ci_agents
-                curr += timedelta(minutes=30)
+            _distribute_demand(buckets, ci_start, ci_end, ci_agents)
 
     # Format Output: "HH:MM" -> Count
     output = {}

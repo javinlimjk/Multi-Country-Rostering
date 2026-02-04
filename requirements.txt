@@ -13,3 +13,4 @@ watchdog
 mlflow
 google-generativeai
 protobuf==5.29.5
+requests
