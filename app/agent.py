@@ -19,8 +19,8 @@ class SchedulingAgent:
         if api_key:
             genai.configure(api_key=api_key)
 
-        # Using gemini-1.5-flash-001 as it is a specific stable version.
-        self.model_name = "gemini-1.5-flash-001"
+        # Using gemini-1.5-flash as it is a specific stable version.
+        self.model_name = "gemini-1.5-flash"
         self.model = genai.GenerativeModel(self.model_name)
 
     def process_message(self, user_text: str, current_state_dict: Dict[str, Any] = None) -> dict:
