@@ -790,10 +790,10 @@ with tab_chat:
                             new_rows = []
                             for s in shifts_data:
                                 new_rows.append({
-                                    "Name": s['name'],
-                                    "Start Time": s['start_time'],
-                                    "Duration": s['duration_hours'],
-                                    "Staff Needed": s['staff_needed']
+                                    "Name": s.get('name', 'Unknown'),
+                                    "Start Time": s.get('start_time', 0),
+                                    "Duration": s.get('duration_hours', 4),
+                                    "Staff Needed": s.get('staff_needed', 1)
                                 })
                             st.session_state['shift_config_df'] = pd.DataFrame(new_rows)
 
