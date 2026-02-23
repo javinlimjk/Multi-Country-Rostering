@@ -20,7 +20,7 @@ class SchedulingAgent:
             genai.configure(api_key=api_key)
 
         # Using gemini-1.5-flash as the modern stable fallback.
-        self.model_name = "gemini-1.5-flash"
+        self.model_name = "gemini-2.5-flash-lite"
         self.model = genai.GenerativeModel(self.model_name)
 
     def process_message(self, user_text: str, current_state_dict: Dict[str, Any] = None) -> dict:
