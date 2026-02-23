@@ -44,8 +44,8 @@ class AuditDataProcessor:
             current_streak = 0
 
             # Iterate through assignments
-            for _, row in group.iterrows():
-                shift_name = row['shift']
+            for row in group.itertuples(index=False):
+                shift_name = row.shift
                 if shift_name in ['Off', 'Leave', 'MC'] or shift_name not in shift_map:
                     current_streak = 0
                     continue
@@ -54,7 +54,7 @@ class AuditDataProcessor:
                 duration = s_def.get('Duration', 8)
                 total_hours += duration
 
-                date_obj = datetime.strptime(row['date'], "%Y-%m-%d").date()
+                date_obj = datetime.strptime(row.date, "%Y-%m-%d").date()
                 if last_date:
                     delta = (date_obj - last_date).days
                     if delta == 1:
@@ -67,7 +67,7 @@ class AuditDataProcessor:
                 consecutive_days = max(consecutive_days, current_streak)
                 last_date = date_obj
 
-                shifts_details.append(f"{row['date']}: {shift_name} ({duration}h)")
+                shifts_details.append(f"{row.date}: {shift_name} ({duration}h)")
 
             summary = (
                 f"Staff {staff_id}:\n"
