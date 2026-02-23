@@ -1,5 +1,6 @@
 # app/main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, status, Depends
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import date
@@ -16,6 +17,22 @@ from app.agent import SchedulingAgent
 from app.demand_planner import FlightService, calculate_required_staff
 
 app = FastAPI(title="SATS Rostering API", version="6.0")
+
+# --- SECURITY ---
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    # In production, check against env var or DB
+    expected_key = os.getenv("COMPLIANCE_API_KEY")
+    if not expected_key:
+        return True # Dev mode: allow if key not set
+    if api_key == expected_key:
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid API Key",
+    )
 
 # --- GLOBAL STATE ---
 compliance_engine = None
@@ -123,7 +140,7 @@ def generate_roster(payload: OptimizeRequest):
         
         return result 
 
-@app.post("/validate")
+@app.post("/validate", dependencies=[Depends(verify_api_key)])
 def validate_roster(payload: ValidateRequest):
     # 1. Technical Check (Hard Constraints) via Optimizer
     rules = get_rules_for_country(payload.country)
@@ -175,7 +192,7 @@ def calculate_live_metrics(payload: MetricsRequest):
     opt = RosterOptimizer([], [])
     return opt.calculate_metrics_only(assignments)
 
-@app.get("/compliance/search")
+@app.get("/compliance/search", dependencies=[Depends(verify_api_key)])
 def search_laws(query: str, country: str = "SG"): # Added country param
     if not compliance_engine:
         raise HTTPException(status_code=503, detail="AI Engine not ready")
