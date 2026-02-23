@@ -1,16 +1,15 @@
-# app/compliance.py
 import os
+import re
 import json
 import pandas as pd
-import numpy as np
-import google.generativeai as genai
-from sentence_transformers import SentenceTransformer
-import faiss
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any
 
 from app.rules import get_rules_for_country
 from app.optimizer import validate_roster_logic
+from app.rag.ingest import run_ingestion
+from app.rag.retriever import get_retriever
+from app.rag.chain import get_compliance_chain
 
 class AuditDataProcessor:
     """
@@ -26,15 +25,15 @@ class AuditDataProcessor:
         df = pd.DataFrame(assignments)
 
         # Merge with shift definitions to get start/end times
-        # assignments usually have 'shift' (name), 'date'.
-        # shift_definitions have 'Name', 'Start Time', 'Duration'.
-
-        # Create a lookup for shifts
         shift_map = {s['Name']: s for s in shift_definitions}
 
         staff_summaries = []
 
         # Group by staff
+        # Check if 'staff_id' exists
+        if 'staff_id' not in df.columns:
+            return "Invalid assignment data: missing staff_id"
+
         for staff_id, group in df.groupby('staff_id'):
             group = group.sort_values('date')
 
@@ -42,11 +41,8 @@ class AuditDataProcessor:
             consecutive_days = 0
             last_date = None
             shifts_details = []
-
-            # Simple logic for consecutive days
             current_streak = 0
 
-            # Iterate through assignments
             for row in group.itertuples(index=False):
                 shift_name = row.shift
                 if shift_name in ['Off', 'Leave', 'MC'] or shift_name not in shift_map:
@@ -57,7 +53,14 @@ class AuditDataProcessor:
                 duration = s_def.get('Duration', 8)
                 total_hours += duration
 
-                date_obj = datetime.strptime(row.date, "%Y-%m-%d").date()
+                if isinstance(row.date, str):
+                    try:
+                        date_obj = datetime.strptime(row.date, "%Y-%m-%d").date()
+                    except:
+                        continue # Skip invalid dates
+                else:
+                    date_obj = row.date
+
                 if last_date:
                     delta = (date_obj - last_date).days
                     if delta == 1:
@@ -83,154 +86,132 @@ class AuditDataProcessor:
         return "\n".join(staff_summaries)
 
 class ComplianceEngine:
-    def __init__(self, embedding_model='all-MiniLM-L6-v2', llm_model='gemini-2.5-flash-lite'):
+    def __init__(self):
         """
-        Initializes the Compliance Auditor Agent.
+        Initializes the Compliance Auditor Agent (RAG-enhanced).
         """
-        print("🧠 Loading Compliance Engine...")
-
-        # 1. Vector Store (Knowledge Base)
-        self.embedder = SentenceTransformer(embedding_model)
-        self.index = None
-        self.documents = []
-        self.doc_sources = []
-
-        # 2. LLM (Auditor)
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.llm = genai.GenerativeModel(llm_model)
-        else:
-            print("⚠️ Warning: GOOGLE_API_KEY not found. Audit features disabled.")
-            self.llm = None
+        print("🧠 Loading Compliance Engine v2 (RAG)...")
+        # RAG components are loaded on demand via app.rag modules
 
     def load_laws(self, directory_path: str):
-        if not os.path.exists(directory_path):
-            print(f"⚠️ Warning: Directory {directory_path} not found.")
-            return
-
+        """
+        Triggers the ingestion pipeline.
+        """
         print(f"📂 Scanning {directory_path} for legal documents...")
-        for filename in os.listdir(directory_path):
-            if filename.endswith(".txt"):
-                file_path = os.path.join(directory_path, filename)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    text_chunks = f.read().split('\n\n')
-                    for chunk in text_chunks:
-                        if chunk.strip():
-                            self.documents.append(chunk.strip())
-                            self.doc_sources.append(filename)
-        self._build_index()
-
-    def _build_index(self):
-        if not self.documents: return
-        embeddings = self.embedder.encode(self.documents)
-        dimension = embeddings.shape[1]
-        self.index = faiss.IndexFlatL2(dimension)
-        self.index.add(np.array(embeddings))
-        print("✅ Legal Knowledge Base Ready.")
+        try:
+            run_ingestion(directory_path, force=True)
+            print("✅ Legal Knowledge Base Updated.")
+        except Exception as e:
+            print(f"❌ Failed to load laws: {e}")
 
     def check_compliance(self, query: str, country_code: str = None, k: int = 3):
         """
-        Standard RAG retrieval.
+        Standard RAG retrieval for search endpoint.
         """
-        if not self.index: return []
-        query_vector = self.embedder.encode([query])
-        distances, indices = self.index.search(query_vector, k=10) # Over-fetch for filtering
+        # We pass country_code to filter if supported, but currently filters
+        # are only fully implemented for Pinecone in the retriever wrapper.
+        filters = {"country": country_code} if country_code else None
         
-        results = []
-        for i, idx in enumerate(indices[0]):
-            if idx < len(self.documents):
-                doc_src = self.doc_sources[idx]
-                # Filter by country code in filename (e.g. "sg_labor_law.txt")
-                if country_code and country_code.lower() not in doc_src.lower():
+        retriever = get_retriever(k=k, filters=filters)
+        if not retriever:
+            return ["RAG System not ready."]
+
+        try:
+            docs = retriever.invoke(query)
+            # Filter results by country if simple retriever returned mixed results
+            # (Simple client-side filtering)
+            results = []
+            for d in docs:
+                content = d.page_content
+                meta = d.metadata
+                # If metadata has country and it doesn't match, skip?
+                # But generic laws might have 'Global'.
+                if country_code and meta.get('country') and meta.get('country') not in [country_code, 'Global']:
                     continue
-                
-                results.append(self.documents[idx])
-                if len(results) >= k: break
-        return results
+                results.append(f"[Source: {meta.get('filename')}]\n{content}")
+            return results
+        except Exception as e:
+            return [f"Retrieval error: {e}"]
+
+    def _mask_pii(self, text: str) -> str:
+        """
+        Masks PII from the roster summary before sending to LLM.
+        """
+        # Mask Staff IDs
+        return re.sub(r"Staff \w+", "Employee_ID_Masked", text)
 
     def audit_roster(self, assignments: List[Dict], shift_definitions: List[Dict], country_code: str) -> Dict:
         """
         Main Agent Function:
-        1. Pre-process data (AuditDataProcessor).
-        2. Multi-Query Retrieval (Self-Querying).
-        3. LLM Analysis with Rigid Template.
+        1. Pre-process data.
+        2. Mask PII.
+        3. Deterministic Validation.
+        4. RAG Chain Execution.
         """
-        if not self.llm:
-            return {"status": "Error", "message": "LLM not initialized."}
-
         # Step 1: Pre-process
         roster_summary = AuditDataProcessor.process(assignments, shift_definitions)
 
-        # Step 2: Deterministic Validation
+        # Step 2: Mask PII
+        masked_summary = self._mask_pii(roster_summary)
+
+        # Step 3: Deterministic Validation
         rules = get_rules_for_country(country_code)
         deterministic_errors = validate_roster_logic(assignments, shift_definitions, rules)
 
-        det_error_str = ""
+        det_error_str = "No algorithmic violations found."
         if deterministic_errors:
-            det_error_str = "### CRITICAL VIOLATIONS FOUND BY ALGORITHM (MUST BE REPORTED):\n"
+            det_error_str = "CRITICAL ALGORITHMIC VIOLATIONS (Must be addressed):\n"
             for err in deterministic_errors:
                 det_error_str += f"- {err['type']}: {err['msg']}\n"
-        else:
-            det_error_str = "No algorithmic violations found."
 
-        # Step 3: Multi-Query Retrieval
-        # We explicitly search for key compliance topics
-        topics = ["Maximum working hours", "Rest periods between shifts", "Consecutive working days limit", "Overtime regulations"]
-        legal_context_str = ""
+        # Step 4: RAG Chain
+        chain = get_compliance_chain()
         
-        for topic in topics:
-            laws = self.check_compliance(topic, country_code=country_code, k=2)
-            if laws:
-                legal_context_str += f"\n--- {topic} ---\n" + "\n".join(laws)
-
-        if not legal_context_str:
-            legal_context_str = "No specific legal documents found for this jurisdiction."
-
-        # Step 4: Prompt Engineering (Auditor Template)
-        prompt = f"""
-        You are a Senior Compliance Auditor for Workforce Rosters. Your job is to strictly validate a proposed roster against provided legal regulations.
-
-        ### LEGAL CONTEXT (Ground Truth)
-        {legal_context_str}
-
-        ### ALGORITHMIC VALIDATION RESULTS (Deterministic Checks)
-        {det_error_str}
-
-        ### PROPOSED ROSTER SUMMARY (Data to Audit)
-        {roster_summary}
-
-        ### INSTRUCTIONS
-        1. Analyze the Roster Summary against the Legal Context AND Algorithmic Validation Results.
-        2. If Algorithmic Validation Results list violations, you MUST verdict FAIL (or WARNING) and list them.
-        3. Assign a Verdict: PASS, FAIL, or WARNING.
-        4. You must cite specific sections from the Legal Context if you find a violation.
-        5. If the Legal Context is missing specific numbers (e.g. "max hours"), acknowledge this limitation but flag high values as potential risks.
-
-        ### OUTPUT FORMAT (JSON)
-        {{
-            "verdict": "PASS" | "FAIL" | "WARNING",
-            "summary": "Brief executive summary of findings.",
-            "violations": [
-                {{
-                    "type": "Max Hours" | "Rest Period" | "Consecutive Days" | "Other",
-                    "description": "Explanation of the violation.",
-                    "severity": "High" | "Medium" | "Low",
-                    "legal_citation": "Quote from Legal Context or 'General Practice' if not found."
-                }}
-            ],
-            "recommendations": ["Actionable advice 1", "Actionable advice 2"]
-        }}
-
-        Return ONLY valid JSON.
-        """
+        # specific query focused on the roster context
+        query = (
+            f"Audit this roster for {country_code} labor law compliance. "
+            f"Focus on working hours, rest days, and shift patterns. "
+            f"Review the 'ALGORITHMIC VIOLATIONS' provided and confirm them with legal citations. "
+            f"Algorithmic Findings: {det_error_str}"
+        )
 
         try:
-            response = self.llm.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            return json.loads(response.text)
+            print("🤖 invoking RAG Chain...")
+            result = chain.invoke({
+                "query": query,
+                "roster_data": masked_summary,
+                "country": country_code
+            })
+
+            # Result is a ComplianceReport Pydantic object
+            report = result.model_dump()
+
+            # ADAPTER: Map to legacy frontend format to ensure UI compatibility
+            legacy_report = {
+                "verdict": report.get('status', 'UNKNOWN'),
+                "summary": report.get('summary', ''),
+                "violations": [],
+                "recommendations": report.get('recommendations', [])
+            }
+
+            for v in report.get('violations', []):
+                # Flatten citations for simple UI display
+                citations_text = "; ".join([f"{c['law_name']} {c['section']}" for c in v.get('citations', [])])
+                legacy_v = {
+                    "type": v.get('violation_type', 'Unknown'),
+                    "severity": v.get('risk_level', 'Medium'),
+                    "description": v.get('description', ''),
+                    "legal_citation": citations_text
+                }
+                legacy_report['violations'].append(legacy_v)
+
+            return legacy_report
+
         except Exception as e:
+            print(f"❌ RAG Audit Failed: {e}")
             return {
-                "verdict": "ERROR",
+                "status": "ERROR",
                 "summary": f"Audit failed: {str(e)}",
-                "violations": []
+                "violations": [],
+                "confidence_score": 0.0
             }

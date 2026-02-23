@@ -14,3 +14,12 @@ mlflow
 google-generativeai
 protobuf==5.29.5
 requests
+langchain
+langchain-community
+langchain-huggingface
+langchain-google-genai
+pinecone
+rank_bm25
+unstructured
+pdfminer.six
+python-dotenv
