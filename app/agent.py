@@ -19,7 +19,7 @@ class SchedulingAgent:
         if api_key:
             genai.configure(api_key=api_key)
 
-        # Using gemini-1.5-flash as it is a specific stable version.
+        # Using gemini-1.5-flash as the modern stable fallback.
         self.model_name = "gemini-1.5-flash"
         self.model = genai.GenerativeModel(self.model_name)
 
@@ -66,7 +66,7 @@ class SchedulingAgent:
            - **CRITICAL**: You must return the FULL cumulative state. Do NOT drop existing shifts or data from `CURRENT STATE` unless the user explicitly asks to "delete" or "reset" them.
            - If the user provides shift details, append them to the 'shifts' list (or update if they are correcting a specific shift).
            - If the user provides a month/year, update 'month_year'.
-           - 'start_time' must be int (e.g. 800). 'duration_hours' must be int.
+           - 'start_time' must be int (e.g. 800). 'duration_hours' must be int. 'staff_needed' must be int.
 
         2. **Conversational Logic**:
            - DO NOT ask for fields that are already in `CURRENT STATE`.
@@ -95,7 +95,17 @@ class SchedulingAgent:
             result = json.loads(response.text)
 
             # Validate return structure
-            updated_state_dict = result.get("updated_state", state.model_dump())
+            raw_updated_state = result.get("updated_state", state.model_dump())
+
+            # Re-validate against Pydantic model to ensure type safety
+            try:
+                validated_state = RosterState(**raw_updated_state)
+                updated_state_dict = validated_state.model_dump()
+            except Exception as val_err:
+                # Fallback to original state if LLM produced invalid schema, but keep the reply
+                print(f"Agent state validation failed: {val_err}")
+                updated_state_dict = state.model_dump()
+
             reply = result.get("reply", "I processed your request.")
             is_complete = result.get("is_complete", False)
             action = result.get("action", None)
