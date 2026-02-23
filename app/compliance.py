@@ -80,7 +80,7 @@ class AuditDataProcessor:
         return "\n".join(staff_summaries)
 
 class ComplianceEngine:
-    def __init__(self, embedding_model='all-MiniLM-L6-v2', llm_model='gemini-1.5-flash'):
+    def __init__(self, embedding_model='all-MiniLM-L6-v2', llm_model='gemini-2.5-flash-lite'):
         """
         Initializes the Compliance Auditor Agent.
         """
