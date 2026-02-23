@@ -219,70 +219,7 @@ class RosterOptimizer:
     
     def validate_roster(self, fixed_assignments: list[dict], shift_definitions: list[dict]):
         """Checks for Understaffing and Rest Violations based on manual edits."""
-        # Helper: Convert dates
-        for x in fixed_assignments:
-            if isinstance(x['date'], str): x['date'] = date.fromisoformat(x['date'])
-
-        errors = []
-        # Build Shift Map
-        shift_map = {}
-        for s in shift_definitions:
-            start = int(s['Start Time'])
-            dur = int(s['Duration'])
-            end_abs = start + (dur * 100) 
-            shift_map[s['Name']] = {'start': start, 'end_abs': end_abs, 'req': s['Staff Needed']}
-
-        # 1. Check Understaffing
-        coverage_counter = Counter()
-        for x in fixed_assignments:
-            if x['shift'] in shift_map:
-                coverage_counter[(x['date'], x['shift'])] += 1
-        
-        all_dates = sorted(list(set(x['date'] for x in fixed_assignments)))
-        for d in all_dates:
-            for s_def in shift_definitions:
-                s_name = s_def['Name']
-                req = s_def['Staff Needed']
-                actual = coverage_counter[(d, s_name)]
-                if actual < req:
-                    missing = req - actual
-                    errors.append({
-                        "type": "Understaffing",
-                        "msg": f"📉 Understaffed: {d} '{s_name}' needs {req} staff, has {actual}.",
-                        "search_query": "" 
-                    })
-
-        # 2. Check Rest Violations
-        min_rest = self.rules.get('min_rest_hours', 10) * 100
-        # Sort by Staff -> Date
-        sorted_data = sorted(fixed_assignments, key=lambda x: (x['staff_id'], x['date']))
-        
-        for i in range(len(sorted_data) - 1):
-            curr = sorted_data[i]
-            next_s = sorted_data[i+1]
-            
-            if curr['staff_id'] != next_s['staff_id']: continue
-            if curr['shift'] not in shift_map or next_s['shift'] not in shift_map: continue
-
-            day_diff = (next_s['date'] - curr['date']).days
-            
-            # Adjacent Days Check
-            if day_diff == 1:
-                prev_def = shift_map[curr['shift']]
-                curr_def = shift_map[next_s['shift']]
-                
-                prev_end = prev_def['end_abs']
-                curr_start = curr_def['start'] + 2400 # Next day adds 24h
-                gap = curr_start - prev_end
-                
-                if gap < min_rest:
-                    errors.append({
-                        "type": "Rest Violation",
-                        "msg": f"⚠️ Rest Violation: {curr['staff_id']} on {next_s['date']}. Gap is {gap/100}h (Min {min_rest/100}h).",
-                        "search_query": "minimum rest period",
-                        "meta": {"date": next_s['date'].isoformat(), "shift": next_s['shift'], "violator": curr['staff_id']}
-                    })
-        return errors
+        return validate_roster_logic(fixed_assignments, shift_definitions, self.rules)
 
     def recommend_replacement(self, date_target, shift_name, fixed_assignments, shift_definitions):
         """
@@ -384,3 +321,73 @@ class RosterOptimizer:
             
             if is_legal: valid.append(sid)
         return valid
+
+def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list[dict], rules: dict):
+    # Helper: Convert dates (Work on copy to avoid mutating input)
+    working_assignments = []
+    for x in fixed_assignments:
+        item = x.copy()
+        if isinstance(item['date'], str):
+            item['date'] = date.fromisoformat(item['date'])
+        working_assignments.append(item)
+
+    errors = []
+    # Build Shift Map
+    shift_map = {}
+    for s in shift_definitions:
+        start = int(s['Start Time'])
+        dur = int(s['Duration'])
+        end_abs = start + (dur * 100)
+        shift_map[s['Name']] = {'start': start, 'end_abs': end_abs, 'req': s['Staff Needed']}
+
+    # 1. Check Understaffing
+    coverage_counter = Counter()
+    for x in working_assignments:
+        if x['shift'] in shift_map:
+            coverage_counter[(x['date'], x['shift'])] += 1
+
+    all_dates = sorted(list(set(x['date'] for x in working_assignments)))
+    for d in all_dates:
+        for s_def in shift_definitions:
+            s_name = s_def['Name']
+            req = s_def['Staff Needed']
+            actual = coverage_counter[(d, s_name)]
+            if actual < req:
+                missing = req - actual
+                errors.append({
+                    "type": "Understaffing",
+                    "msg": f"📉 Understaffed: {d} '{s_name}' needs {req} staff, has {actual}.",
+                    "search_query": ""
+                })
+
+    # 2. Check Rest Violations
+    min_rest = rules.get('min_rest_hours', 10) * 100
+    # Sort by Staff -> Date
+    sorted_data = sorted(working_assignments, key=lambda x: (x['staff_id'], x['date']))
+
+    for i in range(len(sorted_data) - 1):
+        curr = sorted_data[i]
+        next_s = sorted_data[i+1]
+
+        if curr['staff_id'] != next_s['staff_id']: continue
+        if curr['shift'] not in shift_map or next_s['shift'] not in shift_map: continue
+
+        day_diff = (next_s['date'] - curr['date']).days
+
+        # Adjacent Days Check
+        if day_diff == 1:
+            prev_def = shift_map[curr['shift']]
+            curr_def = shift_map[next_s['shift']]
+
+            prev_end = prev_def['end_abs']
+            curr_start = curr_def['start'] + 2400 # Next day adds 24h
+            gap = curr_start - prev_end
+
+            if gap < min_rest:
+                errors.append({
+                    "type": "Rest Violation",
+                    "msg": f"⚠️ Rest Violation: {curr['staff_id']} on {next_s['date']}. Gap is {gap/100}h (Min {min_rest/100}h).",
+                    "search_query": "minimum rest period",
+                    "meta": {"date": next_s['date'].isoformat(), "shift": next_s['shift'], "violator": curr['staff_id']}
+                })
+    return errors

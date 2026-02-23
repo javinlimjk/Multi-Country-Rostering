@@ -9,6 +9,9 @@ import faiss
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
+from app.rules import get_rules_for_country
+from app.optimizer import validate_roster_logic
+
 class AuditDataProcessor:
     """
     Helper class to pre-process roster data for the LLM.
@@ -159,7 +162,19 @@ class ComplianceEngine:
         # Step 1: Pre-process
         roster_summary = AuditDataProcessor.process(assignments, shift_definitions)
 
-        # Step 2: Multi-Query Retrieval
+        # Step 2: Deterministic Validation
+        rules = get_rules_for_country(country_code)
+        deterministic_errors = validate_roster_logic(assignments, shift_definitions, rules)
+
+        det_error_str = ""
+        if deterministic_errors:
+            det_error_str = "### CRITICAL VIOLATIONS FOUND BY ALGORITHM (MUST BE REPORTED):\n"
+            for err in deterministic_errors:
+                det_error_str += f"- {err['type']}: {err['msg']}\n"
+        else:
+            det_error_str = "No algorithmic violations found."
+
+        # Step 3: Multi-Query Retrieval
         # We explicitly search for key compliance topics
         topics = ["Maximum working hours", "Rest periods between shifts", "Consecutive working days limit", "Overtime regulations"]
         legal_context_str = ""
@@ -172,21 +187,25 @@ class ComplianceEngine:
         if not legal_context_str:
             legal_context_str = "No specific legal documents found for this jurisdiction."
 
-        # Step 3: Prompt Engineering (Auditor Template)
+        # Step 4: Prompt Engineering (Auditor Template)
         prompt = f"""
         You are a Senior Compliance Auditor for Workforce Rosters. Your job is to strictly validate a proposed roster against provided legal regulations.
 
         ### LEGAL CONTEXT (Ground Truth)
         {legal_context_str}
 
+        ### ALGORITHMIC VALIDATION RESULTS (Deterministic Checks)
+        {det_error_str}
+
         ### PROPOSED ROSTER SUMMARY (Data to Audit)
         {roster_summary}
 
         ### INSTRUCTIONS
-        1. Analyze the Roster Summary against the Legal Context.
-        2. Assign a Verdict: PASS, FAIL, or WARNING.
-        3. You must cite specific sections from the Legal Context if you find a violation.
-        4. If the Legal Context is missing specific numbers (e.g. "max hours"), acknowledge this limitation but flag high values as potential risks.
+        1. Analyze the Roster Summary against the Legal Context AND Algorithmic Validation Results.
+        2. If Algorithmic Validation Results list violations, you MUST verdict FAIL (or WARNING) and list them.
+        3. Assign a Verdict: PASS, FAIL, or WARNING.
+        4. You must cite specific sections from the Legal Context if you find a violation.
+        5. If the Legal Context is missing specific numbers (e.g. "max hours"), acknowledge this limitation but flag high values as potential risks.
 
         ### OUTPUT FORMAT (JSON)
         {{
