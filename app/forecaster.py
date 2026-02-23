@@ -134,4 +134,4 @@ class StaffingForecaster:
             if val is None: return 0
             if isinstance(val, (float, int)): return int(val)
             return int(float(val)) 
-        except: return 0
+        except (ValueError, TypeError): return 0
