@@ -133,7 +133,7 @@ def refresh_metrics():
             for date_col, shift_val in row.items():
                 user_assignments.append({'staff_id': staff_id, 'date': str(date_col), 'shift': shift_val})
         try:
-            resp = requests.post(f"{API_URL}/metrics", json={"assignments": user_assignments})
+            resp = requests.post(f"{API_URL}/metrics", json={"assignments": user_assignments}, timeout=10)
             if resp.status_code == 200:
                 st.session_state['last_metrics'] = resp.json()
         except: pass
@@ -149,7 +149,7 @@ def run_forecast(days_count, buffer_pct, country_enum):
         "buffer": buffer_pct
     }
     try:
-        resp = requests.post(f"{API_URL}/forecast", json=payload)
+        resp = requests.post(f"{API_URL}/forecast", json=payload, timeout=10)
         if resp.status_code == 200:
             res = resp.json()
             st.session_state['forecast_res'] = res
@@ -192,7 +192,7 @@ def run_optimization(start_date, days_count, country_enum):
     }
 
     try:
-        resp = requests.post(f"{API_URL}/optimize", json=payload)
+        resp = requests.post(f"{API_URL}/optimize", json=payload, timeout=30)
         if resp.status_code == 200:
             result = resp.json()
             st.session_state['last_metrics'] = result['metrics']
@@ -541,7 +541,7 @@ with tab_ops:
                         user_assignments.append({'staff_id': staff_id, 'date': date_str, 'shift': shift_val})
                 payload = {"assignments": user_assignments, "shift_definitions": st.session_state['shift_config_df'].to_dict('records'), "country": country_enum}
                 try:
-                    resp = requests.post(f"{API_URL}/validate", json=payload)
+                    resp = requests.post(f"{API_URL}/validate", json=payload, timeout=10)
                     if resp.status_code == 200:
                         result = resp.json()
                         # Handle new technical errors format
@@ -607,7 +607,7 @@ with tab_ops:
                                     "shift_definitions": st.session_state['shift_config_df'].to_dict('records'),
                                     "staff_list": st.session_state['last_staff_list'], "country": country_enum
                                 }
-                                rec_resp = requests.post(f"{API_URL}/recommend", json=rec_payload)
+                                rec_resp = requests.post(f"{API_URL}/recommend", json=rec_payload, timeout=10)
                                 if rec_resp.status_code == 200:
                                     res = rec_resp.json()['recommendation']
                                     st.session_state[f'rec_res_{i}'] = res
@@ -633,7 +633,8 @@ with tab_ops:
                                      try:
                                          l_resp = requests.get(
                                              f"{API_URL}/compliance/search", 
-                                             params={"query": err['search_query'], "country": country_enum}
+                                             params={"query": err['search_query'], "country": country_enum},
+                                             timeout=10
                                          )
                                          if l_resp.status_code == 200 and l_resp.json(): 
                                              res = l_resp.json()[0]
@@ -649,7 +650,7 @@ with tab_legal:
     q = st.text_input("Search Labor Regulations", "")
     if q and server_status:
         try:
-            resp = requests.get(f"{API_URL}/compliance/search", params={"query": q})
+            resp = requests.get(f"{API_URL}/compliance/search", params={"query": q}, timeout=10)
             if resp.status_code == 200:
                 for r in resp.json():
                     with st.container(border=True):
@@ -772,7 +773,7 @@ with tab_chat:
                     # Pass the LATEST state (synced from editor above)
                     "state": st.session_state.roster_state
                 }
-                resp = requests.post(f"{API_URL}/agent/chat", json=payload)
+                resp = requests.post(f"{API_URL}/agent/chat", json=payload, timeout=10)
 
                 if resp.status_code == 200:
                     data = resp.json()

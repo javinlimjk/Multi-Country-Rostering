@@ -60,7 +60,7 @@ class FlightService:
             # For simplicity, we'll try to fetch and parse.
 
             # This is a simplified implementation. Real-world might need separate calls for arr/dep.
-            response = requests.get(self.base_url, params=params)
+            response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 
