@@ -360,7 +360,7 @@ with tabs[0]:
 
     with c2:
         with st.container():
-            st.markdown("### 👥 Employee Database")
+            st.markdown("### 👥 Employee Database (Optional)")
             
             # Simple controls
             uc1, uc2 = st.columns([3, 1])
@@ -389,7 +389,10 @@ with tabs[0]:
                 height=300
             )
             st.session_state['staff_db'] = edited_staff.to_dict('records')
-            st.caption(f"Total Active Staff: {len(st.session_state['staff_db'])}")
+            count = len(st.session_state['staff_db'])
+            st.caption(f"Total Active Staff: {count}")
+            if count == 0:
+                st.info("💡 Tip: Leave empty to auto-calculate required headcount.")
 
 # TAB 2: DEMAND PLANNING
 with tabs[1]:
