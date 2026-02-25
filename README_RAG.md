@@ -28,7 +28,7 @@ This module upgrades the compliance verification system from a simple keyword-ba
 ### 4. Security & Governance
 - **PII Masking**: Names and IDs are masked (e.g., `Employee_ID_Masked`) before sending data to the LLM.
 - **API Security**: `X-API-Key` header authentication required for compliance endpoints.
-- **Fallback**: Graceful degradation if RAG system is offline (returns technical validation only).
+- **Fallback Strategy**: Robust error handling ensures that if the LLM/RAG system fails (e.g., rate limits, API errors), the system automatically falls back to deterministic logic, returning a report based solely on hard constraints (OR-Tools validation) marked as "Algorithmic Check (Fallback)".
 
 ## Usage
 
