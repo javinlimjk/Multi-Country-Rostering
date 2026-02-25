@@ -111,7 +111,7 @@ class ComplianceEngine:
         # We pass country_code to filter if supported, but currently filters
         # are only fully implemented for Pinecone in the retriever wrapper.
         filters = {"country": country_code} if country_code else None
-        
+
         retriever = get_retriever(k=k, filters=filters)
         if not retriever:
             return ["RAG System not ready."]
@@ -209,9 +209,25 @@ class ComplianceEngine:
 
         except Exception as e:
             print(f"❌ RAG Audit Failed: {e}")
+
+            # Fallback to deterministic results if LLM fails
+            print("⚠️ Falling back to deterministic logic only.")
+
+            fallback_status = "FAIL" if deterministic_errors else "PASS"
+            fallback_summary = "RAG Audit System unavailable. Report based on deterministic rules only."
+
+            fallback_violations = []
+            for err in deterministic_errors:
+                fallback_violations.append({
+                    "type": err['type'],
+                    "severity": "High", # Deterministic errors are usually hard constraints
+                    "description": err['msg'],
+                    "legal_citation": "Algorithmic Check (Fallback)"
+                })
+
             return {
-                "status": "ERROR",
-                "summary": f"Audit failed: {str(e)}",
-                "violations": [],
-                "confidence_score": 0.0
+                "verdict": fallback_status,
+                "summary": fallback_summary,
+                "violations": fallback_violations,
+                "recommendations": ["Review technical violations manually."]
             }

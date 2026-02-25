@@ -19,82 +19,154 @@ st.set_page_config(
     page_title="SATS Roster AI", 
     layout="wide", 
     page_icon="✈️",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# --- MODERN ENTERPRISE THEME ---
-st.markdown("""
+# --- THEME MANAGEMENT ---
+if 'theme' not in st.session_state:
+    st.session_state['theme'] = 'Dark Mode'
+
+def get_theme_css(mode):
+    if mode == 'Dark Mode':
+        # Dark Theme Palette
+        bg_color = "#0f172a"        # Slate 900
+        card_bg = "#1e293b"         # Slate 800
+        text_color = "#f8fafc"      # Slate 50
+        accent_color = "#3b82f6"    # Blue 500
+        sidebar_bg = "#002B5B"      # Deep Navy (Requested)
+        metric_bg = "#0f172a"       # Darker metric
+        border_color = "#334155"    # Slate 700
+        success_color = "#10b981"   # Emerald 500
+    else:
+        # Light Theme Palette
+        bg_color = "#f1f5f9"        # Slate 100
+        card_bg = "#ffffff"         # White
+        text_color = "#0f172a"      # Slate 900
+        accent_color = "#002B5B"    # Deep Navy (Brand)
+        sidebar_bg = "#ffffff"      # White Sidebar
+        metric_bg = "#ffffff"       # White metric
+        border_color = "#cbd5e1"    # Slate 300
+        success_color = "#059669"   # Emerald 600
+
+    return f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     
-    html, body, [class*="css"] {
+    html, body, [class*="css"] {{
         font-family: 'Inter', sans-serif;
-        color: #E2E8F0;
-    }
+        color: {text_color};
+        background-color: {bg_color};
+    }}
 
-    /* CARD STYLING */
-    div[data-testid="stContainer"] {
-        background-color: #1A202C; /* darker bg */
+    /* Main Background Override */
+    .stApp {{
+        background-color: {bg_color};
+    }}
+
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {{
+        background-color: {sidebar_bg};
+        border-right: 1px solid {border_color};
+    }}
+    section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
+        color: {text_color if mode == 'Light Mode' else '#ffffff'};
+    }}
+    section[data-testid="stSidebar"] .caption {{
+        color: {text_color if mode == 'Light Mode' else '#cbd5e1'};
+        opacity: 0.8;
+    }}
+
+    /* Card/Container Styling */
+    div[data-testid="stContainer"] {{
+        background-color: {card_bg};
         border-radius: 12px;
-        padding: 10px;
-    }
+        padding: 15px;
+        border: 1px solid {border_color};
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    }}
 
-    /* CUSTOM METRICS */
-    [data-testid="stMetric"] {
-        background-color: #2D3748;
-        border: 1px solid #4A5568;
-        padding: 20px;
+    /* Metrics */
+    [data-testid="stMetric"] {{
+        background-color: {metric_bg};
+        border: 1px solid {border_color};
+        padding: 15px;
         border-radius: 10px;
         transition: transform 0.2s;
-    }
-    [data-testid="stMetric"]:hover {
+    }}
+    [data-testid="stMetric"]:hover {{
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-    [data-testid="stMetricLabel"] { color: #A0AEC0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    [data-testid="stMetricValue"] { color: #F7FAFC; font-weight: 700; font-size: 1.8rem; }
-
-    /* BUTTONS */
-    .stButton button {
-        border-radius: 8px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {text_color};
+        opacity: 0.7;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         font-weight: 600;
-        padding: 0.5rem 1rem;
+    }}
+    [data-testid="stMetricValue"] {{
+        color: {accent_color};
+        font-weight: 700;
+        font-size: 1.8rem;
+    }}
+
+    /* Buttons */
+    .stButton button {{
+        border-radius: 6px;
+        font-weight: 600;
         border: none;
         transition: all 0.2s;
-    }
-    div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #3182CE 0%, #2B6CB0 100%);
-        box-shadow: 0 4px 6px rgba(49, 130, 206, 0.3);
-    }
-    div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]:hover {
-        box-shadow: 0 6px 8px rgba(49, 130, 206, 0.4);
-    }
+        background-color: {card_bg};
+        color: {text_color};
+        border: 1px solid {border_color};
+    }}
+    .stButton button:hover {{
+        border-color: {accent_color};
+        color: {accent_color};
+    }}
+    div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"] {{
+        background-color: {accent_color};
+        color: #ffffff;
+        border: none;
+    }}
+    div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]:hover {{
+        opacity: 0.9;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }}
 
-    /* TABS */
-    .stTabs [data-baseweb="tab-list"] {
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {{
         gap: 20px;
-        border-bottom: 1px solid #4A5568;
-    }
-    .stTabs [data-baseweb="tab"] {
+        border-bottom: 1px solid {border_color};
+    }}
+    .stTabs [data-baseweb="tab"] {{
         height: 50px;
         white-space: pre-wrap;
         border-radius: 4px 4px 0 0;
-        color: #A0AEC0;
+        color: {text_color};
+        opacity: 0.6;
         font-weight: 600;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #63B3ED;
-        border-bottom: 2px solid #63B3ED;
-    }
+        background-color: transparent;
+    }}
+    .stTabs [data-baseweb="tab"]:hover {{
+        color: {accent_color};
+        opacity: 1;
+    }}
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        color: {accent_color};
+        opacity: 1;
+        border-bottom: 3px solid {accent_color};
+    }}
 
-    /* DATAFRAME */
-    [data-testid="stDataFrame"] {
-        border: 1px solid #2D3748;
+    /* DataFrame */
+    [data-testid="stDataFrame"] {{
+        border: 1px solid {border_color};
         border-radius: 8px;
-    }
+    }}
 
-    /* ALERTS & STATUS */
-    .status-badge {
+    /* Status Badges */
+    .status-badge {{
         display: inline-flex;
         align-items: center;
         padding: 4px 12px;
@@ -103,14 +175,22 @@ st.markdown("""
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }
-    .status-online { background: rgba(5, 150, 105, 0.2); color: #34D399; border: 1px solid #059669; }
-    .status-offline { background: rgba(220, 38, 38, 0.2); color: #F87171; border: 1px solid #B91C1C; }
+    }}
+    .status-online {{ background-color: {success_color}20; color: {success_color}; border: 1px solid {success_color}; }}
+    .status-offline {{ background-color: #ef444420; color: #ef4444; border: 1px solid #ef4444; }}
 
-    h1, h2, h3 { color: #F7FAFC; }
-    .caption { color: #718096; font-size: 0.8rem; }
+    h1, h2, h3, h4, h5, h6 {{ color: {text_color} !important; font-weight: 700; }}
+    .caption {{ color: {text_color} !important; opacity: 0.8; font-size: 0.85rem; }}
+    p {{ color: {text_color} !important; }}
+
+    /* Expander */
+    .streamlit-expanderHeader {{
+        background-color: {card_bg};
+        border-radius: 8px;
+        color: {text_color};
+    }}
 </style>
-""", unsafe_allow_html=True)
+"""
 
 # --- SYSTEM HEALTH ---
 server_status = False
@@ -148,10 +228,11 @@ for key, val in DEFAULTS.items():
 # --- HELPER FUNCTIONS ---
 def highlight_shifts(val):
     val_str = str(val)
+    # Using specific colors that work on both dark/light
     if 'Night' in val_str: return 'background-color: #553C9A; color: white' # Purple
     if 'Morning' in val_str: return 'background-color: #DD6B20; color: white' # Orange
     if 'Afternoon' in val_str: return 'background-color: #2B6CB0; color: white' # Blue
-    if val_str in ['Off']: return 'background-color: #1A202C; color: #4A5568' # Dark Grey
+    if val_str in ['Off']: return 'background-color: #718096; color: white' # Grey
     if val_str in ['MC', 'Leave']: return 'background-color: #C53030; color: white' # Red
     return ''
 
@@ -225,21 +306,30 @@ def run_optimization(start_date, days_count, country_enum):
 COUNTRY_MAP = {"Singapore": "SG", "Malaysia": "MY", "Saudi Arabia": "SA"}
 
 with st.sidebar:
+    # THEME TOGGLE
+    st.markdown("### ⚙️ Settings")
+    theme_mode = st.radio("Display Mode", ["Dark Mode", "Light Mode"], index=0 if st.session_state['theme'] == 'Dark Mode' else 1, horizontal=True, label_visibility="collapsed")
+    if theme_mode != st.session_state['theme']:
+        st.session_state['theme'] = theme_mode
+        st.rerun()
+
+    # INJECT CSS
+    st.markdown(get_theme_css(st.session_state['theme']), unsafe_allow_html=True)
+
     st.markdown("### ✈️ SATS Roster AI")
-    st.caption("v6.0 | Enterprise Edition")
+    st.caption("v7.0 | Enterprise SaaS")
 
     if server_status:
         st.markdown('<div class="status-badge status-online">● System Online</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="status-badge status-offline">● Offline</div>', unsafe_allow_html=True)
-        st.error("Check backend connection")
 
     st.markdown("---")
     country_label = st.selectbox("Operating Region", list(COUNTRY_MAP.keys()))
     country_enum = COUNTRY_MAP[country_label]
 
     st.markdown("---")
-    st.info(f"Logged in as: **Planner_{country_enum}**")
+    st.info(f"User: **Planner_{country_enum}**")
 
 # --- MAIN NAVIGATION ---
 tabs = st.tabs(["🏗️ Setup & Resources", "📈 Demand Planning", "⚙️ Roster Engine", "🎮 Operations Center", "🧠 AI Analyst"])
@@ -252,9 +342,8 @@ with tabs[0]:
     c1, c2 = st.columns([1, 1.2])
     
     with c1:
-        with st.container(border=True):
+        with st.container():
             st.markdown("### 🕒 Shift Definitions")
-            st.caption("Define standard shift patterns and default staffing requirements.")
             edited_config = st.data_editor(
                 st.session_state['shift_config_df'],
                 num_rows="dynamic",
@@ -270,9 +359,8 @@ with tabs[0]:
             st.session_state['shift_config_df'] = edited_config
 
     with c2:
-        with st.container(border=True):
-            st.markdown("### 👥 Employee Database")
-            st.caption("Manage active staff list.")
+        with st.container():
+            st.markdown("### 👥 Employee Database (Optional)")
             
             # Simple controls
             uc1, uc2 = st.columns([3, 1])
@@ -301,14 +389,17 @@ with tabs[0]:
                 height=300
             )
             st.session_state['staff_db'] = edited_staff.to_dict('records')
-            st.caption(f"Total Active Staff: {len(st.session_state['staff_db'])}")
+            count = len(st.session_state['staff_db'])
+            st.caption(f"Total Active Staff: {count}")
+            if count == 0:
+                st.info("💡 Tip: Leave empty to auto-calculate required headcount.")
 
 # TAB 2: DEMAND PLANNING
 with tabs[1]:
     st.markdown("## Demand Forecasting")
     st.caption("Simulate staffing needs based on flight schedules and absenteeism models.")
     
-    with st.container(border=True):
+    with st.container():
         c1, c2, c3 = st.columns([1, 1, 1])
         today = date.today()
 
@@ -324,7 +415,7 @@ with tabs[1]:
             buf = st.slider("Absenteeism Buffer (%)", 0, 30, 15)
 
         with c3:
-            st.write("") # Spacer
+            st.write("")
             st.write("")
             if st.button("▶ Run Simulation", type="primary", use_container_width=True):
                 if days_count > 0:
@@ -411,9 +502,6 @@ with tabs[3]:
 
             # Toolbar
             tb1, tb2 = st.columns([1, 1])
-            with tb1:
-                # View Mode logic could go here
-                pass
             with tb2:
                 csv = st.session_state['roster_data'].to_csv().encode('utf-8')
                 st.download_button("📥 Export CSV", csv, "roster.csv", "text/csv", use_container_width=True)
@@ -497,7 +585,7 @@ with tabs[3]:
                     if audit.get('violations'):
                         st.markdown("#### Violations")
                         for v in audit['violations']:
-                            with st.container(border=True):
+                            with st.container():
                                 st.markdown(f"**{v['type']}**")
                                 st.caption(v['description'])
                                 st.markdown(f"*Ref: {v['legal_citation']}*")
@@ -548,6 +636,6 @@ with tabs[4]:
                 r = requests.get(f"{API_URL}/compliance/search", params={"query": kq, "country": country_enum})
                 if r.status_code == 200:
                     for item in r.json():
-                         with st.container(border=True):
+                         with st.container():
                              st.markdown(item)
             except: pass

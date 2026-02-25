@@ -14,11 +14,51 @@ class RosterOptimizer:
         else:
             self.shifts = shifts
 
+        # Auto-generate staff if none provided
+        if not self.staff_list:
+            self.staff_list = self._generate_synthetic_staff()
+
         # Default rules if none provided
         self.rules = rules if rules else {'min_rest_hours': 10, 'max_consecutive_days': 6, 'max_weekly_hours': 44}
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         self.assignments = {} 
+
+    def _generate_synthetic_staff(self):
+        """
+        Estimates staff needed based on peak concurrency + buffer.
+        """
+        events = []
+        for s in self.shifts:
+            d = date.fromisoformat(s.date)
+            start_min = (d.toordinal() * 1440) + (s.start_time // 100 * 60) + (s.start_time % 100)
+            end_min = start_min + int(s.duration_hours * 60)
+
+            events.append((start_min, 1))
+            events.append((end_min, -1))
+
+        events.sort()
+
+        max_overlap = 0
+        current_overlap = 0
+        for _, change in events:
+            current_overlap += change
+            max_overlap = max(max_overlap, current_overlap)
+
+        # Add buffer (50% + 2) to ensure feasibility
+        needed = int(max_overlap * 1.5) + 2
+
+        print(f"Auto-generating {needed} staff (Peak Demand: {max_overlap})")
+
+        generated = []
+        for i in range(needed):
+            generated.append(Staff(
+                id=f"Open_Pos_{i+1}",
+                name=f"Open Position {i+1}",
+                role="Driver",
+                country="SG"
+            ))
+        return generated
 
     def _generate_shifts_from_demand(self, demand_signal):
         """
