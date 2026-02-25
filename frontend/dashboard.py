@@ -2,10 +2,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-import json
 import plotly.express as px
 from datetime import date, timedelta
-import calendar
 import os
 import sys
 
@@ -135,30 +133,6 @@ def get_theme_css(mode):
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }}
 
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 20px;
-        border-bottom: 1px solid {border_color};
-    }}
-    .stTabs [data-baseweb="tab"] {{
-        height: 50px;
-        white-space: pre-wrap;
-        border-radius: 4px 4px 0 0;
-        color: {text_color};
-        opacity: 0.6;
-        font-weight: 600;
-        background-color: transparent;
-    }}
-    .stTabs [data-baseweb="tab"]:hover {{
-        color: {accent_color};
-        opacity: 1;
-    }}
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
-        color: {accent_color};
-        opacity: 1;
-        border-bottom: 3px solid {accent_color};
-    }}
-
     /* DataFrame */
     [data-testid="stDataFrame"] {{
         border: 1px solid {border_color};
@@ -210,15 +184,11 @@ DEFAULTS = {
     'roster_data': None,
     'validation_errors': [],
     'last_metrics': None,
-    'staff_db': [
-        {"id": "S1", "name": "Ali", "role": "Driver", "country": "Singapore"},
-        {"id": "S2", "name": "Bob", "role": "Loader", "country": "Singapore"},
-        {"id": "S3", "name": "Charlie", "role": "Supervisor", "country": "Singapore"},
-        {"id": "S4", "name": "David", "role": "Driver", "country": "Singapore"},
-    ],
+    'staff_db': [],
     'custom_rules': {'max_weekly_hours': 44, 'min_rest_hours': 10},
     'messages': [],
-    'roster_state': {"shifts": [], "month_year": None, "location": "Singapore"}
+    'roster_state': {"shifts": [], "month_year": None, "location": "Singapore"},
+    'use_custom_staff': False
 }
 
 for key, val in DEFAULTS.items():
@@ -228,34 +198,20 @@ for key, val in DEFAULTS.items():
 # --- HELPER FUNCTIONS ---
 def highlight_shifts(val):
     val_str = str(val)
-    # Using specific colors that work on both dark/light
-    if 'Night' in val_str: return 'background-color: #553C9A; color: white' # Purple
-    if 'Morning' in val_str: return 'background-color: #DD6B20; color: white' # Orange
-    if 'Afternoon' in val_str: return 'background-color: #2B6CB0; color: white' # Blue
-    if val_str in ['Off']: return 'background-color: #718096; color: white' # Grey
-    if val_str in ['MC', 'Leave']: return 'background-color: #C53030; color: white' # Red
+    if 'Night' in val_str: return 'background-color: #553C9A; color: white'
+    if 'Morning' in val_str: return 'background-color: #DD6B20; color: white'
+    if 'Afternoon' in val_str: return 'background-color: #2B6CB0; color: white'
+    if val_str in ['Off']: return 'background-color: #718096; color: white'
+    if val_str in ['MC', 'Leave']: return 'background-color: #C53030; color: white'
     return ''
 
-def run_forecast(days_count, buffer_pct, country_enum):
-    clean_inputs = st.session_state['shift_config_df'].to_dict('records')
-    payload = {
-        "shift_inputs": clean_inputs,
-        "days": days_count,
-        "country": country_enum,
-        "buffer": buffer_pct
-    }
-    try:
-        resp = requests.post(f"{API_URL}/forecast", json=payload, timeout=10)
-        if resp.status_code == 200:
-            res = resp.json()
-            st.session_state['forecast_res'] = res
-            return True, res
-        return False, f"Forecast Failed: {resp.text}"
-    except Exception as e:
-        return False, str(e)
-
 def run_optimization(start_date, days_count, country_enum):
-    staff_payload = st.session_state['staff_db']
+    # Determine Staff Source
+    if st.session_state.get('use_custom_staff', False):
+        staff_payload = st.session_state.get('staff_db', [])
+    else:
+        staff_payload = [] # Empty list triggers backend auto-generation
+
     shifts = []
     config = st.session_state['shift_config_df'].to_dict('records')
 
@@ -265,6 +221,7 @@ def run_optimization(start_date, days_count, country_enum):
         for item in config:
             try:
                 count = int(item["Staff Needed"])
+                # Handle rollover roughly for ID generation
                 end_t = (int(item["Start Time"]) + (int(item["Duration"])*100)) % 2400
                 for i in range(count):
                     shifts.append({
@@ -295,29 +252,55 @@ def run_optimization(start_date, days_count, country_enum):
             if not df.empty:
                 pivot = df.pivot(index="Staff", columns="Date", values="Shift").fillna("Off")
                 st.session_state['roster_data'] = pivot
-            st.session_state['last_staff_list'] = staff_payload
+
+            # Update Staff List if auto-generated
+            if not staff_payload:
+                 # Extract unique staff from assignments if we didn't send any
+                 unique_staff = sorted(list(set(x['staff_id'] for x in result['assignments'])))
+                 # Populate session state just for visualization if needed, but 'roster_data' index is better source
+                 pass
+
             st.session_state['validation_errors'] = []
             return True, "Success"
         return False, f"Optimization Failed: {resp.text}"
     except Exception as e:
         return False, f"API Error: {e}"
 
+def calculate_analytics(roster_df, shift_config_df):
+    """
+    Calculate hours worked per staff member.
+    """
+    if roster_df is None or roster_df.empty:
+        return None
+
+    # Map shift names to duration
+    duration_map = {row['Name']: row['Duration'] for _, row in shift_config_df.iterrows()}
+
+    analytics_data = []
+    for staff_id, row in roster_df.iterrows():
+        total_hours = 0
+        shifts_worked = 0
+        for date_col in roster_df.columns:
+            shift_name = row[date_col]
+            if shift_name in duration_map:
+                total_hours += duration_map[shift_name]
+                shifts_worked += 1
+
+        analytics_data.append({
+            "Staff": staff_id,
+            "Total Hours": total_hours,
+            "Shifts Worked": shifts_worked
+        })
+
+    return pd.DataFrame(analytics_data)
+
 # --- APP LAYOUT ---
 COUNTRY_MAP = {"Singapore": "SG", "Malaysia": "MY", "Saudi Arabia": "SA"}
 
+# SIDEBAR NAVIGATION
 with st.sidebar:
-    # THEME TOGGLE
-    st.markdown("### ⚙️ Settings")
-    theme_mode = st.radio("Display Mode", ["Dark Mode", "Light Mode"], index=0 if st.session_state['theme'] == 'Dark Mode' else 1, horizontal=True, label_visibility="collapsed")
-    if theme_mode != st.session_state['theme']:
-        st.session_state['theme'] = theme_mode
-        st.rerun()
-
-    # INJECT CSS
-    st.markdown(get_theme_css(st.session_state['theme']), unsafe_allow_html=True)
-
     st.markdown("### ✈️ SATS Roster AI")
-    st.caption("v7.0 | Enterprise SaaS")
+    st.caption("v8.0 | Comprehensive Suite")
 
     if server_status:
         st.markdown('<div class="status-badge status-online">● System Online</div>', unsafe_allow_html=True)
@@ -325,221 +308,155 @@ with st.sidebar:
         st.markdown('<div class="status-badge status-offline">● Offline</div>', unsafe_allow_html=True)
 
     st.markdown("---")
+
+    page = st.radio("Navigation", ["📅 Roster Dashboard", "🤖 AI Copilot"], label_visibility="collapsed")
+
+    st.markdown("---")
+    st.markdown("### ⚙️ Settings")
     country_label = st.selectbox("Operating Region", list(COUNTRY_MAP.keys()))
     country_enum = COUNTRY_MAP[country_label]
 
-    st.markdown("---")
+    theme_mode = st.radio("Display Mode", ["Dark Mode", "Light Mode"], index=0 if st.session_state['theme'] == 'Dark Mode' else 1, horizontal=True)
+    if theme_mode != st.session_state['theme']:
+        st.session_state['theme'] = theme_mode
+        st.rerun()
+
+    # INJECT CSS
+    st.markdown(get_theme_css(st.session_state['theme']), unsafe_allow_html=True)
     st.info(f"User: **Planner_{country_enum}**")
 
-# --- MAIN NAVIGATION ---
-tabs = st.tabs(["🏗️ Setup & Resources", "📈 Demand Planning", "⚙️ Roster Engine", "🎮 Operations Center", "🧠 AI Analyst"])
 
-# TAB 1: SETUP & RESOURCES
-with tabs[0]:
-    st.markdown("## Resource Configuration")
-    st.caption("Manage master data: Shift Definitions and Employee Database.")
-    
-    c1, c2 = st.columns([1, 1.2])
-    
-    with c1:
-        with st.container():
-            st.markdown("### 🕒 Shift Definitions")
+# --- PAGE: ROSTER DASHBOARD ---
+if page == "📅 Roster Dashboard":
+    st.title("Operations Dashboard")
+    st.caption("One-stop command center for staffing, scheduling, and compliance.")
+
+    # 1. CONFIGURATION & ACTION BAR
+    with st.expander("🛠️ Configuration & Rules", expanded=True):
+        c1, c2, c3 = st.columns([1.5, 1.5, 1])
+
+        with c1:
+            st.markdown("#### 1. Shift Definitions")
             edited_config = st.data_editor(
                 st.session_state['shift_config_df'],
                 num_rows="dynamic",
                 use_container_width=True,
-                column_config={
-                    "Name": st.column_config.TextColumn("Shift Name", required=True),
-                    "Start Time": st.column_config.NumberColumn("Start (2400)", format="%d"),
-                    "Duration": st.column_config.NumberColumn("Duration (Hrs)"),
-                    "Staff Needed": st.column_config.NumberColumn("Headcount")
-                },
-                key="config_editor_main"
+                key="config_editor_main",
+                height=150
             )
             st.session_state['shift_config_df'] = edited_config
 
-    with c2:
-        with st.container():
-            st.markdown("### 👥 Employee Database (Optional)")
-            
-            # Simple controls
-            uc1, uc2 = st.columns([3, 1])
-            uploaded_file = uc1.file_uploader("Import CSV", type=["csv"], label_visibility="collapsed")
-            if uc2.button("Clear DB"): st.session_state['staff_db'] = []
-            
-            if uploaded_file:
-                try:
-                    df = pd.read_csv(uploaded_file)
-                    df.columns = [c.lower() for c in df.columns]
-                    st.session_state['staff_db'] = df.to_dict('records')
-                    st.toast("Staff Imported Successfully")
-                except Exception as e: st.error(str(e))
-
-            staff_df = pd.DataFrame(st.session_state['staff_db'])
-            edited_staff = st.data_editor(
-                staff_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                column_config={
-                    "id": "ID", "name": "Name",
-                    "role": st.column_config.SelectboxColumn("Role", options=["Driver", "Loader", "Supervisor"]),
-                    "country": st.column_config.SelectboxColumn("Region", options=list(COUNTRY_MAP.keys()))
-                },
-                key="staff_editor_main",
-                height=300
-            )
-            st.session_state['staff_db'] = edited_staff.to_dict('records')
-            count = len(st.session_state['staff_db'])
-            st.caption(f"Total Active Staff: {count}")
-            if count == 0:
-                st.info("💡 Tip: Leave empty to auto-calculate required headcount.")
-
-# TAB 2: DEMAND PLANNING
-with tabs[1]:
-    st.markdown("## Demand Forecasting")
-    st.caption("Simulate staffing needs based on flight schedules and absenteeism models.")
-    
-    with st.container():
-        c1, c2, c3 = st.columns([1, 1, 1])
-        today = date.today()
-
-        with c1:
-            dr = st.date_input("Simulation Period", value=(today, today + timedelta(days=6)), min_value=today)
-            if len(dr) == 2:
-                days_count = (dr[1] - dr[0]).days + 1
-                st.session_state['cal_start'] = dr[0]
-                st.session_state['cal_days'] = days_count
-            else: days_count = 0
-
         with c2:
-            buf = st.slider("Absenteeism Buffer (%)", 0, 30, 15)
+            st.markdown("#### 2. Staffing Strategy")
+            use_custom = st.toggle("Use Employee Database", value=st.session_state['use_custom_staff'], key='use_custom_staff')
+            
+            if use_custom:
+                st.caption("Upload or edit your staff list.")
+                uc1, uc2 = st.columns([3, 1])
+                uploaded_file = uc1.file_uploader("Import CSV", type=["csv"], label_visibility="collapsed")
+                if uc2.button("Clear DB"): st.session_state['staff_db'] = []
+
+                if uploaded_file:
+                    try:
+                        df = pd.read_csv(uploaded_file)
+                        df.columns = [c.lower() for c in df.columns]
+                        st.session_state['staff_db'] = df.to_dict('records')
+                        st.toast("Staff Imported Successfully")
+                    except Exception as e: st.error(str(e))
+
+                staff_df = pd.DataFrame(st.session_state['staff_db'])
+                edited_staff = st.data_editor(staff_df, num_rows="dynamic", use_container_width=True, height=100)
+                st.session_state['staff_db'] = edited_staff.to_dict('records')
+            else:
+                st.info("✨ **Auto-Pilot Mode**: The system will automatically calculate the required headcount and generate 'Open Position' assignments based on shift overlap.")
 
         with c3:
-            st.write("")
-            st.write("")
-            if st.button("▶ Run Simulation", type="primary", use_container_width=True):
-                if days_count > 0:
-                    with st.spinner("Simulating..."):
-                        run_forecast(days_count, buf/100.0, country_enum)
-    
-    if 'forecast_res' in st.session_state:
-        res = st.session_state['forecast_res']
-        st.markdown("### Simulation Results")
+            st.markdown("#### 3. Execution")
+            today = date.today()
+            dr = st.date_input("Roster Period", value=(today, today + timedelta(days=6)), min_value=today)
+
+            days_count = 7
+            start_date = today
+            if len(dr) == 2:
+                days_count = (dr[1] - dr[0]).days + 1
+                start_date = dr[0]
+
+            if st.button("🚀 Generate Roster", type="primary", use_container_width=True):
+                with st.spinner("Optimizing schedule..."):
+                    success, msg = run_optimization(start_date, days_count, country_enum)
+                    if success: st.success("Optimization Complete!")
+                    else: st.error(msg)
+
+            with st.popover("Advanced Constraints"):
+                mh = st.number_input("Max Weekly Hours", 40, 60, 44)
+                mr = st.number_input("Min Rest (Hours)", 8, 24, 10)
+                st.session_state['custom_rules'] = {'max_weekly_hours': mh, 'min_rest_hours': mr}
+
+    # 2. ANALYTICS & RESULTS
+    if st.session_state['roster_data'] is not None:
+        st.markdown("---")
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Minimum Staff", res['min_staff'])
-        m2.metric("Recommended Safe", res['rec_staff'], delta=f"+{res['buffer_size']} Buffer")
+        # METRICS ROW
+        m1, m2, m3, m4 = st.columns(4)
         
-        real_count = len(st.session_state.get('staff_db', []))
-        gap = res['rec_staff'] - real_count
+        # Calculate Analytics
+        analytics_df = calculate_analytics(st.session_state['roster_data'], st.session_state['shift_config_df'])
         
-        if gap > 0:
-            m3.metric("Staffing Gap", f"-{gap}", delta_color="inverse")
-            st.warning(f"Shortage Detected: You need {gap} more staff for safe operations.")
-            if st.button(f"🛠️ Auto-Hire {gap} Temp Staff"):
-                # Logic to add temp staff
-                base = len(st.session_state['staff_db'])
-                new_staff = [{"id": f"T{base+i}", "name": f"Temp_{i}", "role": "Driver", "country": country_label} for i in range(gap)]
-                st.session_state['staff_db'].extend(new_staff)
-                st.rerun()
-        else:
-            m3.metric("Staffing Gap", "0", delta_color="normal")
-            st.success("Staffing levels are sufficient.")
+        # Overall Stats
+        total_hours = analytics_df['Total Hours'].sum() if analytics_df is not None else 0
+        avg_hours = analytics_df['Total Hours'].mean() if analytics_df is not None else 0
+        fairness_std = analytics_df['Total Hours'].std() if analytics_df is not None else 0
 
-# TAB 3: ROSTER ENGINE
-with tabs[2]:
-    st.markdown("## Optimization Engine")
-    st.caption("Configure constraints and generate the roster.")
+        m1.metric("Total Man-Hours", f"{total_hours}h")
+        m2.metric("Avg Hours / Staff", f"{avg_hours:.1f}h")
+        m3.metric("Fairness (StdDev)", f"{fairness_std:.1f}", help="Lower is better (more equal distribution)")
 
-    c_ctrl, c_rules = st.columns([1, 2])
-
-    with c_ctrl:
-        st.info(f"Target: **{st.session_state.get('cal_days', 7)} Days** starting **{st.session_state.get('cal_start', date.today())}**")
-
-        if st.button("🚀 Launch Optimizer", type="primary", use_container_width=True):
-            with st.status("Optimizing...", expanded=True) as status:
-                st.write("Initializing Solver...")
-                s_date = st.session_state.get('cal_start', date.today())
-                n_days = st.session_state.get('cal_days', 7)
-
-                success, msg = run_optimization(s_date, n_days, country_enum)
-                if success:
-                    status.update(label="Optimization Complete!", state="complete", expanded=False)
-                    st.toast("Roster Generated Successfully")
-                else:
-                    status.update(label="Optimization Failed", state="error")
-                    st.error(msg)
-
-    with c_rules:
-        with st.expander("⚙️ Advanced Policy Constraints", expanded=True):
-            rc1, rc2 = st.columns(2)
-            mh = rc1.number_input("Max Weekly Hours", 40, 60, 44)
-            mr = rc2.number_input("Min Rest (Hours)", 8, 24, 10)
-            st.session_state['custom_rules'] = {'max_weekly_hours': mh, 'min_rest_hours': mr}
-            st.caption(f"Active Profile: {country_enum} Labor Laws Override")
-
-# TAB 4: OPERATIONS CENTER
-with tabs[3]:
-    if st.session_state['roster_data'] is None:
-        st.warning("No Roster Available. Please generate one in the 'Roster Engine' tab.")
-    else:
-        # METRICS HEADER
         if st.session_state.get('last_metrics'):
             m = st.session_state['last_metrics']
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Solution Time", f"{m['runtime_seconds']}s")
-            c2.metric("Fairness Score", m['fairness_gap'])
-            c3.metric("Total Shifts", m['shift_count'])
-            c4.metric("Assignments", "OPTIMAL")
+            m4.metric("Solver Speed", f"{m.get('runtime_seconds', 0)}s")
 
-        st.markdown("---")
+        # MAIN SPLIT
+        left_p, right_p = st.columns([2, 1])
 
-        # MAIN WORKSPACE SPLIT
-        left_panel, right_panel = st.columns([2.5, 1])
-
-        with left_panel:
-            st.subheader("🗓️ Operational Roster")
+        with left_p:
+            st.subheader("🗓️ Interactive Schedule")
 
             # Toolbar
             tb1, tb2 = st.columns([1, 1])
             with tb2:
                 csv = st.session_state['roster_data'].to_csv().encode('utf-8')
-                st.download_button("📥 Export CSV", csv, "roster.csv", "text/csv", use_container_width=True)
+                st.download_button("📥 Export to CSV", csv, "roster.csv", "text/csv", use_container_width=True)
 
             # The Table
             display_df = st.session_state['roster_data'].copy()
-            # Clean dates
-            cols = []
-            for c in display_df.columns:
-                try: cols.append(date.fromisoformat(c).strftime("%d/%m"))
-                except: cols.append(c)
-            display_df.columns = cols
-            
             st.dataframe(
                 display_df.style.map(highlight_shifts),
                 use_container_width=True,
                 height=500
             )
-            
-            # Quick Editor
-            with st.expander("✏️ Quick Shift Editor"):
-                staff_list = st.session_state['roster_data'].index.tolist()
-                s_staff = st.selectbox("Staff", staff_list)
-                if s_staff:
-                    row = st.session_state['roster_data'].loc[s_staff]
-                    s_date = st.selectbox("Date", row.index)
-                    current_shift = row[s_date]
-                    new_shift = st.selectbox("Assign Shift", ["Off", "Leave", "MC", "Morning Ops", "Afternoon Ops", "Night Cargo"], index=0)
-                    if st.button("Apply Change"):
-                        st.session_state['roster_data'].at[s_staff, s_date] = new_shift
-                        st.toast("Shift Updated")
-                        st.rerun()
 
-        with right_panel:
-            st.subheader("🛡️ Compliance Audit")
+        with right_p:
+            st.subheader("📊 Analytics & Fairness")
             
-            if st.button("🔍 Run Full Audit", type="primary", use_container_width=True):
-                with st.spinner("Auditing against laws..."):
+            if analytics_df is not None:
+                # 1. Hours Distribution Chart
+                fig_bar = px.bar(
+                    analytics_df,
+                    x='Total Hours',
+                    y='Staff',
+                    orientation='h',
+                    title="Hours Worked per Staff",
+                    template="plotly_dark" if st.session_state['theme'] == 'Dark Mode' else "plotly_white",
+                    color="Total Hours",
+                    color_continuous_scale="Viridis"
+                )
+                fig_bar.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+            # Compliance Section
+            st.markdown("### 🛡️ Compliance Audit")
+            if st.button("Run Full Compliance Check", use_container_width=True):
+                 with st.spinner("Auditing against labor laws..."):
                     # Prepare payload
                     user_assignments = []
                     for staff_id, row in st.session_state['roster_data'].iterrows():
@@ -559,49 +476,35 @@ with tabs[3]:
                         else: st.error("Audit Failed")
                     except Exception as e: st.error(str(e))
             
-            # DISPLAY RESULTS
+            # Display Audit Results
             if 'audit_result' in st.session_state:
                 res = st.session_state['audit_result']
                 audit = res.get('compliance_audit', {})
                 tech = res.get('technical_errors', [])
                 
-                # Tech Errors
                 if tech:
-                    st.error(f"{len(tech)} Critical Constraints Broken")
-                    for t in tech[:3]:
-                        st.markdown(f"**{t['type']}**: {t['msg']}")
-                else:
-                    st.success("Technical Constraints Met")
+                    st.error(f"{len(tech)} Technical Conflicts")
 
-                st.markdown("---")
-
-                # AI Compliance
                 if audit:
                     verdict = audit.get('verdict', 'UNKNOWN')
                     color = "green" if verdict == "PASS" else "red"
-                    st.markdown(f"### AI Verdict: :{color}[{verdict}]")
-                    st.info(audit.get('summary', 'No summary available.'))
+                    st.markdown(f"**Verdict:** :{color}[{verdict}]")
+                    st.caption(audit.get('summary', ''))
 
                     if audit.get('violations'):
-                        st.markdown("#### Violations")
-                        for v in audit['violations']:
-                            with st.container():
-                                st.markdown(f"**{v['type']}**")
-                                st.caption(v['description'])
-                                st.markdown(f"*Ref: {v['legal_citation']}*")
-                    else:
-                        st.caption("No regulatory violations found.")
+                        with st.expander("View Violations"):
+                             for v in audit['violations']:
+                                 st.markdown(f"- **{v['type']}**: {v['description']}")
 
-# TAB 5: AI ANALYST
-with tabs[4]:
-    st.markdown("## 🧠 AI Copilot")
-    st.caption("Chat with your roster data. Ask about laws, optimization, or specific staff schedules.")
+# --- PAGE: AI ASSISTANT ---
+elif page == "🤖 AI Copilot":
+    st.title("AI Roster Analyst")
+    st.caption("Ask questions about labor laws, request changes, or analyze fairness.")
 
     cl, cr = st.columns([2, 1])
 
     with cl:
-        # Chat Interface
-        chat_cont = st.container(height=500)
+        chat_cont = st.container(height=600)
         for msg in st.session_state.messages:
             chat_cont.chat_message(msg["role"]).write(msg["content"])
 
@@ -619,23 +522,23 @@ with tabs[4]:
                     st.session_state.messages.append({"role": "assistant", "content": bot_reply})
                     chat_cont.chat_message("assistant").write(bot_reply)
 
-                    # Handle Actions
                     if data.get('action') == "GENERATE":
                         st.toast("AI Triggered Optimization...")
                         run_optimization(date.today(), 7, country_enum)
-                        st.rerun()
             except Exception as e:
                 chat_cont.error(f"AI Error: {e}")
 
     with cr:
-        # Knowledge Search
-        st.markdown("### 📚 Legal Knowledge")
-        kq = st.text_input("Search Regulations")
+        st.markdown("### 📚 Legal Knowledge Base")
+        st.info(f"Active Jurisdiction: **{country_label}**")
+        kq = st.text_input("Search Specific Regulation")
         if kq:
             try:
                 r = requests.get(f"{API_URL}/compliance/search", params={"query": kq, "country": country_enum})
                 if r.status_code == 200:
                     for item in r.json():
                          with st.container():
-                             st.markdown(item)
+                             st.markdown(f"**{item.get('law_name', 'Regulation')}**")
+                             st.caption(item.get('text', '')[:300] + "...")
+                             st.markdown("---")
             except: pass
