@@ -179,8 +179,9 @@ def get_theme_css(mode):
     .status-online {{ background-color: {success_color}20; color: {success_color}; border: 1px solid {success_color}; }}
     .status-offline {{ background-color: #ef444420; color: #ef4444; border: 1px solid #ef4444; }}
 
-    h1, h2, h3, h4, h5, h6 {{ color: {text_color}; font-weight: 700; }}
-    .caption {{ color: {text_color}; opacity: 0.6; font-size: 0.85rem; }}
+    h1, h2, h3, h4, h5, h6 {{ color: {text_color} !important; font-weight: 700; }}
+    .caption {{ color: {text_color} !important; opacity: 0.8; font-size: 0.85rem; }}
+    p {{ color: {text_color} !important; }}
 
     /* Expander */
     .streamlit-expanderHeader {{
