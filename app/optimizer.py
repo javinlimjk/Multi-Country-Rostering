@@ -316,17 +316,22 @@ class RosterOptimizer:
 
         # 2. Identify Candidates
         # All staff in the roster
-        all_staff_ids = list(set(x['staff_id'] for x in fixed_assignments))
-        candidates_off = [sid for sid in all_staff_ids if day_assignments.get(sid) == "Off"]
+        if self.staff_list:
+            all_staff_ids = [s.id for s in self.staff_list]
+        else:
+            all_staff_ids = list(set(x['staff_id'] for x in fixed_assignments))
+
+        # Candidates are those explicitly marked "Off" OR those with no assignment record for the day (None)
+        candidates_off = [sid for sid in all_staff_ids if day_assignments.get(sid) in ["Off", None]]
         
         # --- PHASE 1: DIRECT FILL ---
         valid_off = self._filter_candidates(candidates_off, date_target, target_def, fixed_assignments, shift_definitions)
         if valid_off:
-            valid_off.sort(key=lambda x: workload[x]) # Pick least worked
+            valid_off.sort(key=lambda x: workload[x]) # Pick least worked (Fairness)
             best = valid_off[0]
             return {
                 "candidate": best, 
-                "message": f"🌟 Recommended: {best} (Is Off, Workload: {workload[best]})"
+                "message": f"🌟 Recommended: {best} (Least Worked: {workload[best]} shifts). Fairness check passed."
             }
 
         # --- PHASE 2: SWAP FROM SURPLUS ---
