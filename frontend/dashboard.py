@@ -12,6 +12,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # API CONFIGURATION
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+API_KEY = os.getenv("COMPLIANCE_API_KEY", "")
+API_HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
 st.set_page_config(
     page_title="SATS Roster AI", 
@@ -331,6 +333,54 @@ if page == "📅 Roster Dashboard":
     st.title("Operations Dashboard")
     st.caption("One-stop command center for staffing, scheduling, and compliance.")
 
+    # 0. DEMAND FORECAST
+    with st.expander("📈 Demand Forecast & Simulation", expanded=False):
+        st.caption("Simulate staffing needs based on shift patterns and absence rates.")
+        f1, f2, f3 = st.columns([1, 1, 2])
+
+        with f1:
+            sim_days = st.slider("Simulation Horizon (Days)", 7, 30, 14)
+        with f2:
+            abs_rate = st.slider("Absence Buffer (%)", 0, 30, 15)
+
+        with f3:
+            st.write("") # Spacer
+            if st.button("Run Forecast Simulation", use_container_width=True):
+                with st.spinner("Running Monte Carlo Simulation..."):
+                    payload = {
+                        "shift_inputs": st.session_state['shift_config_df'].to_dict('records'),
+                        "days": sim_days,
+                        "country": country_enum,
+                        "buffer": abs_rate / 100.0
+                    }
+                    try:
+                        r = requests.post(f"{API_URL}/forecast", json=payload, timeout=10)
+                        if r.status_code == 200:
+                            st.session_state['forecast_result'] = r.json()
+                            st.toast("Simulation Complete")
+                        else: st.error(f"Forecast Error: {r.text}")
+                    except Exception as e: st.error(str(e))
+
+        if 'forecast_result' in st.session_state:
+            res = st.session_state['forecast_result']
+            st.markdown("---")
+            m1, m2 = st.columns([1, 2])
+
+            with m1:
+                rec = res.get('rec_staff', 0)
+                min_s = res.get('min_staff', 0)
+                buf = res.get('buffer_size', 0)
+
+                st.metric("Recommended Headcount", rec, delta=f"+{buf} Buffer")
+                st.caption(f"Minimum Feasible: {min_s} Staff")
+
+            with m2:
+                st.markdown("**Simulation Logs**")
+                logs = res.get('logs', [])
+                with st.container(height=150):
+                    for l in logs:
+                        st.text(l)
+
     # 1. CONFIGURATION & ACTION BAR
     with st.expander("🛠️ Configuration & Rules", expanded=True):
         c1, c2, c3 = st.columns([1.5, 1.5, 1])
@@ -469,7 +519,7 @@ if page == "📅 Roster Dashboard":
                         "country": country_enum
                     }
                     try:
-                        r = requests.post(f"{API_URL}/validate", json=payload, timeout=15)
+                        r = requests.post(f"{API_URL}/validate", json=payload, headers=API_HEADERS, timeout=15)
                         if r.status_code == 200:
                             st.session_state['audit_result'] = r.json()
                             st.toast("Audit Complete")
@@ -534,7 +584,7 @@ elif page == "🤖 AI Copilot":
         kq = st.text_input("Search Specific Regulation")
         if kq:
             try:
-                r = requests.get(f"{API_URL}/compliance/search", params={"query": kq, "country": country_enum})
+                r = requests.get(f"{API_URL}/compliance/search", params={"query": kq, "country": country_enum}, headers=API_HEADERS)
                 if r.status_code == 200:
                     for item in r.json():
                          with st.container():
