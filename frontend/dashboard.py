@@ -519,16 +519,39 @@ if page == "📅 Roster Dashboard":
                 st.download_button("📥 Export to CSV", csv, "roster.csv", "text/csv", use_container_width=True)
 
             # The Table
-            display_df = st.session_state['roster_data'].copy()
-            st.dataframe(
-                display_df.style.map(highlight_shifts),
+            # Create a list of available shift types plus leave codes
+            shift_options = st.session_state['shift_config_df']['Name'].tolist() + ["Off", "Leave", "MC"]
+
+            # Configure all date columns to use Selectbox
+            col_config = {}
+            for col in st.session_state['roster_data'].columns:
+                col_config[col] = st.column_config.SelectboxColumn(
+                    col,
+                    options=shift_options,
+                    required=True
+                )
+
+            st.caption("✏️ **Edit Mode**: Click any cell to change a shift assignment (e.g., to 'MC' or 'Leave').")
+            # We need to manually handle the key and state syncing carefully to avoid reset loops
+            # When using data_editor with key, changes are in st.session_state[key]["edited_rows"]
+            # But simplest way is just to assign the return value if not None
+
+            edited_roster = st.data_editor(
+                st.session_state['roster_data'],
                 use_container_width=True,
-                height=500
+                height=500,
+                column_config=col_config,
+                key="roster_editor_widget" # Use a distinct key for the widget
             )
+
+            # Check for changes and update the persistent state
+            if not edited_roster.equals(st.session_state['roster_data']):
+                st.session_state['roster_data'] = edited_roster
+                st.rerun()
 
         with right_p:
             st.subheader("📊 Analytics & Fairness")
-            
+
             if analytics_df is not None:
                 # 1. Hours Distribution Chart
                 fig_bar = px.bar(
@@ -566,13 +589,13 @@ if page == "📅 Roster Dashboard":
                             st.toast("Audit Complete")
                         else: st.error("Audit Failed")
                     except Exception as e: st.error(str(e))
-            
+
             # Display Audit Results
             if 'audit_result' in st.session_state:
                 res = st.session_state['audit_result']
                 audit = res.get('compliance_audit', {})
                 tech = res.get('technical_errors', [])
-                
+
                 if tech:
                     st.error(f"{len(tech)} Technical Conflicts")
 
