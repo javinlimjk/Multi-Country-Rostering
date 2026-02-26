@@ -331,11 +331,41 @@ with st.sidebar:
 # --- PAGE: ROSTER DASHBOARD ---
 if page == "📅 Roster Dashboard":
     st.title("Operations Dashboard")
-    st.caption("One-stop command center for staffing, scheduling, and compliance.")
+    st.caption("Follow the steps below: Define Work -> Forecast Demand -> Assign People -> Execute.")
 
-    # 0. DEMAND FORECAST
-    with st.expander("📈 Demand Forecast & Simulation", expanded=False):
-        st.caption("Simulate staffing needs based on shift patterns and absence rates.")
+    # --- TOP LEVEL: CAMPAIGN SETTINGS ---
+    with st.container():
+        c_date, c_info = st.columns([1, 2])
+        with c_date:
+            today = date.today()
+            dr = st.date_input("📅 Roster Period", value=(today, today + timedelta(days=6)), min_value=today)
+
+            days_count = 7
+            start_date = today
+            if len(dr) == 2:
+                days_count = (dr[1] - dr[0]).days + 1
+                start_date = dr[0]
+
+        with c_info:
+            st.info("💡 **Tip:** Define your shifts first, then use the Forecast tool to predict staffing needs before generating the roster.")
+
+    st.markdown("---")
+
+    # --- STEP 1: WORK DEFINITION ---
+    with st.expander("1. Work Definition (Shift Types)", expanded=True):
+        st.markdown("Define the types of shifts required for daily operations.")
+        edited_config = st.data_editor(
+            st.session_state['shift_config_df'],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="config_editor_main",
+            height=200
+        )
+        st.session_state['shift_config_df'] = edited_config
+
+    # --- STEP 2: DEMAND INTELLIGENCE ---
+    with st.expander("2. Demand Intelligence (Forecast)", expanded=False):
+        st.caption("Simulate staffing needs based on the Shift Definitions above.")
         f1, f2, f3 = st.columns([1, 1, 2])
 
         with f1:
@@ -354,7 +384,7 @@ if page == "📅 Roster Dashboard":
                         "buffer": abs_rate / 100.0
                     }
                     try:
-                        r = requests.post(f"{API_URL}/forecast", json=payload, timeout=10)
+                        r = requests.post(f"{API_URL}/forecast", json=payload, headers=API_HEADERS, timeout=10)
                         if r.status_code == 200:
                             st.session_state['forecast_result'] = r.json()
                             st.toast("Simulation Complete")
@@ -381,63 +411,74 @@ if page == "📅 Roster Dashboard":
                     for l in logs:
                         st.text(l)
 
-    # 1. CONFIGURATION & ACTION BAR
-    with st.expander("🛠️ Configuration & Rules", expanded=True):
-        c1, c2, c3 = st.columns([1.5, 1.5, 1])
+    # --- STEP 3: WORKFORCE ---
+    with st.expander("3. Workforce Management", expanded=False):
+        c_mode, c_db = st.columns([1, 3])
 
-        with c1:
-            st.markdown("#### 1. Shift Definitions")
-            edited_config = st.data_editor(
-                st.session_state['shift_config_df'],
-                num_rows="dynamic",
-                use_container_width=True,
-                key="config_editor_main",
-                height=150
-            )
-            st.session_state['shift_config_df'] = edited_config
-
-        with c2:
-            st.markdown("#### 2. Staffing Strategy")
+        with c_mode:
+            st.markdown("### Strategy")
             use_custom = st.toggle("Use Employee Database", value=st.session_state['use_custom_staff'], key='use_custom_staff')
-            
-            if use_custom:
-                st.caption("Upload or edit your staff list.")
-                uc1, uc2 = st.columns([3, 1])
+            if not use_custom:
+                st.info("✨ **Auto-Pilot**: We will automatically generate 'Open Position' staff based on demand.")
+            else:
+                st.success("📂 **Manual Mode**: Using uploaded staff list.")
+                uc1, uc2 = st.columns([1, 1])
                 uploaded_file = uc1.file_uploader("Import CSV", type=["csv"], label_visibility="collapsed")
                 if uc2.button("Clear DB"): st.session_state['staff_db'] = []
 
                 if uploaded_file:
                     try:
                         df = pd.read_csv(uploaded_file)
+                        # Normalize columns
                         df.columns = [c.lower() for c in df.columns]
                         st.session_state['staff_db'] = df.to_dict('records')
                         st.toast("Staff Imported Successfully")
                     except Exception as e: st.error(str(e))
 
-                staff_df = pd.DataFrame(st.session_state['staff_db'])
-                edited_staff = st.data_editor(staff_df, num_rows="dynamic", use_container_width=True, height=100)
+        with c_db:
+            if use_custom:
+                st.markdown("### Staff Database")
+                staff_data = st.session_state.get('staff_db', [])
+
+                # Ensure default columns exist if empty
+                if not staff_data:
+                    staff_df = pd.DataFrame(columns=["id", "name", "role", "status", "contract_type", "country"])
+                else:
+                    staff_df = pd.DataFrame(staff_data)
+
+                column_config = {
+                    "status": st.column_config.SelectboxColumn(
+                        "Status", options=["Active", "Inactive"], default="Active", required=True
+                    ),
+                    "contract_type": st.column_config.SelectboxColumn(
+                        "Contract", options=["Full Time", "Part Time"], default="Full Time", required=True
+                    ),
+                    "role": st.column_config.SelectboxColumn(
+                        "Role", options=["Driver", "Loader", "Supervisor"], default="Driver"
+                    )
+                }
+
+                edited_staff = st.data_editor(
+                    staff_df,
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    height=250,
+                    column_config=column_config
+                )
                 st.session_state['staff_db'] = edited_staff.to_dict('records')
-            else:
-                st.info("✨ **Auto-Pilot Mode**: The system will automatically calculate the required headcount and generate 'Open Position' assignments based on shift overlap.")
 
-        with c3:
-            st.markdown("#### 3. Execution")
-            today = date.today()
-            dr = st.date_input("Roster Period", value=(today, today + timedelta(days=6)), min_value=today)
+    # --- STEP 4: EXECUTION ---
+    st.markdown("### 4. Final Execution")
+    ex1, ex2 = st.columns([3, 1])
+    with ex1:
+        if st.button("🚀 Generate Roster", type="primary", use_container_width=True):
+            with st.spinner("Optimizing schedule..."):
+                success, msg = run_optimization(start_date, days_count, country_enum)
+                if success: st.success("Optimization Complete!")
+                else: st.error(msg)
 
-            days_count = 7
-            start_date = today
-            if len(dr) == 2:
-                days_count = (dr[1] - dr[0]).days + 1
-                start_date = dr[0]
-
-            if st.button("🚀 Generate Roster", type="primary", use_container_width=True):
-                with st.spinner("Optimizing schedule..."):
-                    success, msg = run_optimization(start_date, days_count, country_enum)
-                    if success: st.success("Optimization Complete!")
-                    else: st.error(msg)
-
-            with st.popover("Advanced Constraints"):
+    with ex2:
+         with st.popover("Advanced Constraints"):
                 mh = st.number_input("Max Weekly Hours", 40, 60, 44)
                 mr = st.number_input("Min Rest (Hours)", 8, 24, 10)
                 st.session_state['custom_rules'] = {'max_weekly_hours': mh, 'min_rest_hours': mr}

@@ -7,7 +7,9 @@ import time
 
 class RosterOptimizer:
     def __init__(self, staff_list: list[Staff], shifts: list[Shift], rules: dict = None, demand_signal: dict = None):
-        self.staff_list = staff_list
+        # Filter out inactive staff
+        self.staff_list = [s for s in staff_list if s.status == "Active"] if staff_list else []
+
         # If demand_signal is provided, generate shifts from it
         if demand_signal:
             self.shifts = self._generate_shifts_from_demand(demand_signal)
@@ -78,6 +80,8 @@ class RosterOptimizer:
                 id=f"Open_Pos_{i+1}",
                 name=f"Open Position {i+1}",
                 role="Driver",
+                status="Active",
+                contract_type="Full Time",
                 country="SG"
             ))
         return generated
