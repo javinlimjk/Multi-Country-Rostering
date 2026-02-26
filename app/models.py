@@ -17,6 +17,8 @@ class Staff(BaseModel):
     id: str
     name: Optional[str] = "Unknown"
     role: Optional[str] = "Driver"
+    status: Optional[str] = "Active" # Active, Inactive
+    contract_type: Optional[str] = "Full Time" # Full Time, Part Time
     country: Optional[str] = "SG"
 
 class Shift(BaseModel):
