@@ -423,7 +423,8 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
                 errors.append({
                     "type": "Understaffing",
                     "msg": f"📉 Understaffed: {d} '{s_name}' needs {req} staff, has {actual}.",
-                    "search_query": ""
+                    "search_query": "",
+                    "meta": {"date": d.isoformat(), "shift": s_name}
                 })
 
     # 2. Check Rest Violations

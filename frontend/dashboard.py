@@ -569,16 +569,26 @@ if page == "📅 Roster Dashboard":
 
             # Compliance Section
             st.markdown("### 🛡️ Compliance Audit")
+
+            # Helper for constructing payload
+            def get_current_assignments():
+                assigns = []
+                for staff_id, row in st.session_state['roster_data'].iterrows():
+                    for date_str, shift_val in row.items():
+                        assigns.append({'staff_id': staff_id, 'date': date_str, 'shift': shift_val})
+                return assigns
+
+            def get_staff_payload():
+                if st.session_state.get('use_custom_staff', False) and st.session_state.get('staff_db'):
+                     return st.session_state['staff_db']
+                # Else construct from roster_data
+                staff_ids = st.session_state['roster_data'].index.tolist()
+                return [{"id": sid, "name": sid, "role": "Driver", "status": "Active", "contract_type": "Full Time", "country": country_enum} for sid in staff_ids]
+
             if st.button("Run Full Compliance Check", use_container_width=True):
                  with st.spinner("Auditing against labor laws..."):
-                    # Prepare payload
-                    user_assignments = []
-                    for staff_id, row in st.session_state['roster_data'].iterrows():
-                        for date_str, shift_val in row.items():
-                            user_assignments.append({'staff_id': staff_id, 'date': date_str, 'shift': shift_val})
-
                     payload = {
-                        "assignments": user_assignments,
+                        "assignments": get_current_assignments(),
                         "shift_definitions": st.session_state['shift_config_df'].to_dict('records'),
                         "country": country_enum
                     }
@@ -596,8 +606,57 @@ if page == "📅 Roster Dashboard":
                 audit = res.get('compliance_audit', {})
                 tech = res.get('technical_errors', [])
 
+                # --- AUTO RESOLVE UI ---
+                if 'recommendation' in st.session_state and st.session_state['recommendation']:
+                    rec = st.session_state['recommendation']
+                    st.info(f"✨ AI Recommendation: {rec.get('message', '')}")
+                    c_apply, c_cancel = st.columns([1, 4])
+                    if c_apply.button("Apply Fix", type="primary"):
+                        candidate = rec.get('candidate')
+                        ctx = st.session_state.get('rec_context')
+                        if candidate and ctx:
+                            st.session_state['roster_data'].at[candidate, ctx['date']] = ctx['shift']
+                            st.toast(f"Fixed: Assigned {candidate}")
+                            # Clear state
+                            del st.session_state['recommendation']
+                            del st.session_state['rec_context']
+                            st.rerun()
+                    if c_cancel.button("Cancel"):
+                        del st.session_state['recommendation']
+                        del st.session_state['rec_context']
+                        st.rerun()
+
                 if tech:
-                    st.error(f"{len(tech)} Technical Conflicts")
+                    st.error(f"{len(tech)} Technical Conflicts (Actionable)")
+                    for i, err in enumerate(tech):
+                        with st.container():
+                            c1, c2 = st.columns([3, 1])
+                            c1.markdown(f"**{err['type']}**: {err['msg']}")
+
+                            meta = err.get('meta')
+                            # Only show Resolve for Understaffing currently supported by backend
+                            if meta and err['type'] == 'Understaffing':
+                                if c2.button("Resolve", key=f"res_{i}"):
+                                    with st.spinner("Finding replacement..."):
+                                        p_rec = {
+                                            "date_target": meta['date'],
+                                            "shift_name": meta['shift'],
+                                            "assignments": get_current_assignments(),
+                                            "shift_definitions": st.session_state['shift_config_df'].to_dict('records'),
+                                            "staff_list": get_staff_payload(),
+                                            "country": country_enum
+                                        }
+                                        try:
+                                            rr = requests.post(f"{API_URL}/recommend", json=p_rec, timeout=10)
+                                            if rr.status_code == 200:
+                                                st.session_state['recommendation'] = rr.json()['recommendation']
+                                                st.session_state['rec_context'] = meta
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Failed: {rr.text}")
+                                        except Exception as e: st.error(str(e))
+                            st.divider()
+
 
                 if audit:
                     verdict = audit.get('verdict', 'UNKNOWN')
@@ -606,7 +665,7 @@ if page == "📅 Roster Dashboard":
                     st.caption(audit.get('summary', ''))
 
                     if audit.get('violations'):
-                        with st.expander("View Violations"):
+                        with st.expander("View Policy Violations (AI Analysis)"):
                              for v in audit['violations']:
                                  st.markdown(f"- **{v['type']}**: {v['description']}")
 
