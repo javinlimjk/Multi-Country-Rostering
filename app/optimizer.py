@@ -14,12 +14,13 @@ class RosterOptimizer:
         else:
             self.shifts = shifts
 
+        # Default rules if none provided
+        self.rules = rules if rules else {'min_rest_hours': 10, 'max_consecutive_days': 6, 'max_weekly_hours': 44}
+
         # Auto-generate staff if none provided
         if not self.staff_list:
             self.staff_list = self._generate_synthetic_staff()
 
-        # Default rules if none provided
-        self.rules = rules if rules else {'min_rest_hours': 10, 'max_consecutive_days': 6, 'max_weekly_hours': 44}
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         self.assignments = {} 
@@ -45,10 +46,31 @@ class RosterOptimizer:
             current_overlap += change
             max_overlap = max(max_overlap, current_overlap)
 
-        # Add buffer (50% + 2) to ensure feasibility
-        needed = int(max_overlap * 1.5) + 2
+        # --- VOLUME CHECK ---
+        # Calculate total hours required
+        total_shift_hours = sum(s.duration_hours * s.required_staff_count for s in self.shifts)
 
-        print(f"Auto-generating {needed} staff (Peak Demand: {max_overlap})")
+        # Calculate capacity per person
+        max_weekly_hours = self.rules.get('max_weekly_hours', 44)
+        if self.shifts:
+            dates = [date.fromisoformat(s.date) for s in self.shifts]
+            period_days = (max(dates) - min(dates)).days + 1
+        else:
+            period_days = 7
+
+        period_weeks = max(period_days / 7.0, 1.0)
+        capacity_per_person = period_weeks * max_weekly_hours
+
+        # Minimum staff by volume (hours)
+        min_staff_volume = total_shift_hours / capacity_per_person
+
+        # Add buffer (20% for volume, 50% for concurrency flexibility)
+        needed_volume = int(min_staff_volume * 1.2) + 1
+        needed_concurrency = int(max_overlap * 1.5) + 2
+
+        needed = max(needed_volume, needed_concurrency)
+
+        print(f"Auto-generating {needed} staff (Peak Demand: {max_overlap}, Volume Need: {min_staff_volume:.1f})")
 
         generated = []
         for i in range(needed):
