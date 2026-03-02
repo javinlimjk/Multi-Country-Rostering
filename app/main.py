@@ -118,7 +118,7 @@ def generate_roster(payload: OptimizeRequest):
     if payload.rules:
         rules.update(payload.rules)
 
-    print(f"Running Optimization for {len(payload.staff)} staff with rules: {rules}")
+    print(f"Running Optimization for {len(payload.staff)} staff")
 
     # Pass demand_signal to optimizer
     opt = RosterOptimizer(payload.staff, payload.shifts, rules, demand_signal=payload.demand_signal)
