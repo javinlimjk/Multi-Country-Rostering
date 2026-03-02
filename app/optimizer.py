@@ -33,7 +33,7 @@ class RosterOptimizer:
         """
         events = []
         for s in self.shifts:
-            d = date.fromisoformat(s.date)
+            d = s.date
             start_min = (d.toordinal() * 1440) + (s.start_time // 100 * 60) + (s.start_time % 100)
             end_min = start_min + int(s.duration_hours * 60)
 
@@ -55,7 +55,7 @@ class RosterOptimizer:
         # Calculate capacity per person
         max_weekly_hours = self.rules.get('max_weekly_hours', 44)
         if self.shifts:
-            dates = [date.fromisoformat(s.date) for s in self.shifts]
+            dates = [s.date for s in self.shifts]
             period_days = (max(dates) - min(dates)).days + 1
         else:
             period_days = 7
@@ -93,7 +93,7 @@ class RosterOptimizer:
         This effectively creates a 'task' based roster.
         """
         generated_shifts = []
-        today_str = date.today().isoformat() # Use today as default date for generated shifts
+        today_date = date.today() # Use today as default date for generated shifts
 
         for time_str, count in demand_signal.items():
             if count <= 0: continue
@@ -116,7 +116,7 @@ class RosterOptimizer:
                 for i in range(count):
                     shift = Shift(
                         id=f"GEN_{time_str}_{i}",
-                        date=today_str,
+                        date=today_date,
                         type="Generated",
                         start_time=start_t,
                         end_time=end_t,
@@ -196,34 +196,78 @@ class RosterOptimizer:
 
     def _apply_min_rest_period(self):
         min_rest_minutes = int(self.rules.get('min_rest_hours', 10) * 60)
-        # Sort shifts chronologically to check adjacency
-        sorted_shifts = sorted(self.shifts, key=lambda s: (s.date, s.start_time))
         
-        for i in range(len(sorted_shifts)):
-            for j in range(i + 1, len(sorted_shifts)):
-                shift_a = sorted_shifts[i]
-                shift_b = sorted_shifts[j]
-                
-                # Check day difference
-                d_a = date.fromisoformat(shift_a.date)
-                d_b = date.fromisoformat(shift_b.date)
-                day_diff = (d_b - d_a).days
-                
-                if day_diff > 1: break # Too far apart to matter
-                
-                # Calculate absolute end time of A and start time of B in minutes
-                a_start_min = (shift_a.start_time // 100) * 60 + (shift_a.start_time % 100)
-                a_end_min = (shift_a.end_time // 100) * 60 + (shift_a.end_time % 100)
-                if a_end_min < a_start_min:
-                    a_end_min += 24 * 60
+        # Group shifts by date
+        shifts_by_date = {}
+        for s in self.shifts:
+            shifts_by_date.setdefault(s.date, []).append(s)
 
-                b_start_min = (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100)
-                b_start_min += day_diff * 24 * 60
-                
-                # If gap is too small, forbid assigning both to same person
-                if (b_start_min - a_end_min) < min_rest_minutes:
-                    for staff in self.staff_list:
-                         self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
+        all_dates = sorted(list(shifts_by_date.keys()))
+
+        for i, current_date in enumerate(all_dates):
+            current_day_shifts = shifts_by_date[current_date]
+            next_day_shifts = shifts_by_date.get(current_date + timedelta(days=1), [])
+
+            # Combine current day and next day shifts to check adjacent time blocks
+            shifts_to_check = current_day_shifts + next_day_shifts
+
+            for a_idx, shift_a in enumerate(shifts_to_check):
+                for shift_b in shifts_to_check[a_idx + 1:]:
+                    d_a = shift_a.date
+                    d_b = shift_b.date
+                    day_diff = (d_b - d_a).days
+
+                    if day_diff < 0:
+                        continue # Should not happen due to structure, but just in case
+
+                    # Calculate absolute end time of A and start time of B in minutes
+                    a_start_min = (shift_a.start_time // 100) * 60 + (shift_a.start_time % 100)
+                    a_end_min = (shift_a.end_time // 100) * 60 + (shift_a.end_time % 100)
+                    if a_end_min < a_start_min:
+                        a_end_min += 24 * 60
+
+                    b_start_min = (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100)
+                    b_start_min += day_diff * 24 * 60
+
+                    # Ensure shift_a happens before shift_b conceptually, else swap roles
+                    # But since we are looking at combinations, we can check both directions
+                    gap_ab = b_start_min - a_end_min
+
+                    b_end_min = (shift_b.end_time // 100) * 60 + (shift_b.end_time % 100)
+                    if b_end_min < (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100):
+                        b_end_min += 24 * 60
+                    b_end_min += day_diff * 24 * 60
+
+                    gap_ba = a_start_min - (b_end_min - day_diff * 24 * 60) + day_diff * 24 * 60 # wait, better logic below:
+
+                    # We just need to check if the time segments overlap or are too close
+                    # Segment A: [a_start, a_end] (relative to d_a)
+                    # Segment B: [b_start, b_end] (relative to d_a)
+                    b_s = b_start_min
+                    a_e = a_end_min
+
+                    if b_s >= a_e:
+                        if (b_s - a_e) < min_rest_minutes:
+                            for staff in self.staff_list:
+                                self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
+                    else:
+                        # shift_b starts before shift_a ends.
+                        # Segment B: [b_start, b_end]
+                        b_e = (shift_b.end_time // 100) * 60 + (shift_b.end_time % 100)
+                        if b_e < (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100):
+                            b_e += 24 * 60
+                        b_e += day_diff * 24 * 60
+
+                        a_s = a_start_min
+                        if a_s >= b_e:
+                            if (a_s - b_e) < min_rest_minutes:
+                                for staff in self.staff_list:
+                                    self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
+                        else:
+                            # They overlap, definitely can't do both
+                            for staff in self.staff_list:
+                                self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
+
 
     def _apply_max_consecutive_days(self):
         max_d = self.rules.get('max_consecutive_days', 6)
@@ -278,13 +322,10 @@ class RosterOptimizer:
         for staff in self.staff_list:
             for shift in self.shifts:
                 if self.solver.Value(self.assignments[(staff.id, shift.id)]) == 1:
-                    # Convert string date back to object if needed, or keep string
-                    # Here we keep whatever format shift.date is (usually ISO string)
-                    d_obj = date.fromisoformat(shift.date)
                     results.append(RosterAssignment(
                         staff_id=staff.id, 
                         shift_id=shift.id, 
-                        date=d_obj, 
+                        date=shift.date,
                         shift_type=shift.type
                     ))
         return results

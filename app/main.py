@@ -7,8 +7,12 @@ from datetime import date
 import os
 import mlflow
 
+import logging
+
 # Import internal modules
 from app.models import Staff, Shift, RosterAssignment
+
+logger = logging.getLogger(__name__)
 from app.optimizer import RosterOptimizer
 from app.forecaster import StaffingForecaster
 from app.compliance import ComplianceEngine
@@ -43,13 +47,13 @@ def load_models():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     laws_path = os.path.join(base_dir, "data", "laws")
     
-    print(f"🚀 Server Starting... Scanning for laws in {laws_path}")
+    logger.info(f"🚀 Server Starting... Scanning for laws in {laws_path}")
     compliance_engine = ComplianceEngine()
     
     if os.path.exists(laws_path):
         compliance_engine.load_laws(laws_path)
     else:
-        print("⚠️ Warning: Laws directory not found. RAG features will be disabled.")
+        logger.warning("⚠️ Warning: Laws directory not found. RAG features will be disabled.")
     
     # Setup MLflow
     mlflow_dir = os.path.join(base_dir, "mlruns")
@@ -57,7 +61,7 @@ def load_models():
         os.makedirs(mlflow_dir)
     mlflow.set_tracking_uri(f"file:{mlflow_dir}")
     mlflow.set_experiment("SATS_Roster_Optimization")
-    print("✅ System Ready.")
+    logger.info("✅ System Ready.")
 
 # --- REQUEST SCHEMAS ---
 class ForecastRequest(BaseModel):
@@ -118,7 +122,7 @@ def generate_roster(payload: OptimizeRequest):
     if payload.rules:
         rules.update(payload.rules)
 
-    print(f"Running Optimization for {len(payload.staff)} staff")
+    logger.info(f"Running Optimization for {len(payload.staff)} staff")
 
     # Pass demand_signal to optimizer
     opt = RosterOptimizer(payload.staff, payload.shifts, rules, demand_signal=payload.demand_signal)

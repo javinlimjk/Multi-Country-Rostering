@@ -92,7 +92,15 @@ class SchedulingAgent:
                 full_prompt,
                 generation_config={"response_mime_type": "application/json"}
             )
-            result = json.loads(response.text)
+
+            text = response.text.strip()
+            # Clean markdown codeblocks if they exist
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1]
+            if text.endswith("```"):
+                text = text.rsplit("\n", 1)[0]
+
+            result = json.loads(text)
 
             # Validate return structure
             raw_updated_state = result.get("updated_state", state.model_dump())

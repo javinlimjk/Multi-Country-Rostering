@@ -23,7 +23,7 @@ class Staff(BaseModel):
 
 class Shift(BaseModel):
     id: str
-    date: str  # ISO Format YYYY-MM-DD
+    date: date  # ISO Format YYYY-MM-DD
     type: str  # "Morning", "Night"
     start_time: int
     end_time: int
