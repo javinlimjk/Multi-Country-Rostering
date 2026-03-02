@@ -200,9 +200,9 @@ for key, val in DEFAULTS.items():
 # --- HELPER FUNCTIONS ---
 def highlight_shifts(val):
     val_str = str(val)
-    if 'Night' in val_str: return 'background-color: #553C9A; color: white'
-    if 'Morning' in val_str: return 'background-color: #DD6B20; color: white'
-    if 'Afternoon' in val_str: return 'background-color: #2B6CB0; color: white'
+    if 'Night' in val_str: return 'background-color: #4a148c; color: white'
+    if 'Morning' in val_str: return 'background-color: #e65100; color: white'
+    if 'Afternoon' in val_str: return 'background-color: #01579b; color: white'
     if val_str in ['Off']: return 'background-color: #718096; color: white'
     if val_str in ['MC', 'Leave']: return 'background-color: #C53030; color: white'
     return ''
