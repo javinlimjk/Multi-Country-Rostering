@@ -102,11 +102,14 @@ class RosterOptimizer:
             try:
                 h, m = map(int, time_str.split(':'))
                 start_t = h * 100 + m
+
                 # Assume 30 min duration for each slot from demand planner
-                # This aligns with the bucket logic in demand_planner
-                end_t = start_t + 30
-                if end_t % 100 >= 60: # Handle hour rollover
-                    end_t = (end_t // 100 + 1) * 100 + (end_t % 100 - 60)
+                start_min = h * 60 + m
+                end_min = start_min + 30
+
+                end_h = (end_min // 60) % 24
+                end_m = end_min % 60
+                end_t = end_h * 100 + end_m
 
                 # Create 'count' number of shifts for this slot
                 # Each shift needs 1 person
@@ -192,7 +195,7 @@ class RosterOptimizer:
                 self.model.Add(sum(self.assignments[(staff.id, s.id)] for s in daily_shifts) <= 1)
 
     def _apply_min_rest_period(self):
-        min_rest = self.rules.get('min_rest_hours', 10) * 100
+        min_rest_minutes = int(self.rules.get('min_rest_hours', 10) * 60)
         # Sort shifts chronologically to check adjacency
         sorted_shifts = sorted(self.shifts, key=lambda s: (s.date, s.start_time))
         
@@ -208,12 +211,17 @@ class RosterOptimizer:
                 
                 if day_diff > 1: break # Too far apart to matter
                 
-                # Calculate absolute end time of A and start time of B
-                end_a = shift_a.end_time + 2400 if shift_a.end_time < shift_a.start_time else shift_a.end_time
-                start_b = shift_b.start_time + (day_diff * 2400)
+                # Calculate absolute end time of A and start time of B in minutes
+                a_start_min = (shift_a.start_time // 100) * 60 + (shift_a.start_time % 100)
+                a_end_min = (shift_a.end_time // 100) * 60 + (shift_a.end_time % 100)
+                if a_end_min < a_start_min:
+                    a_end_min += 24 * 60
+
+                b_start_min = (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100)
+                b_start_min += day_diff * 24 * 60
                 
                 # If gap is too small, forbid assigning both to same person
-                if (start_b - end_a) < min_rest: 
+                if (b_start_min - a_end_min) < min_rest_minutes:
                     for staff in self.staff_list:
                          self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
 
@@ -355,11 +363,13 @@ class RosterOptimizer:
     def _filter_candidates(self, candidates, date_target, target_def, fixed_assignments, shift_definitions):
         """Helper to check Rest Constraints for a list of candidate staff"""
         valid = []
-        t_start = int(target_def['Start Time'])
-        t_dur = int(target_def['Duration'])
-        t_end_abs = t_start + (t_dur * 100) 
+        t_start_val = int(target_def['Start Time'])
+        t_dur_hours = float(target_def['Duration'])
+
+        t_start_min = (t_start_val // 100) * 60 + (t_start_val % 100)
+        t_end_min = t_start_min + int(t_dur_hours * 60)
         
-        min_rest = self.rules.get('min_rest_hours', 10) * 100
+        min_rest_min = int(self.rules.get('min_rest_hours', 10) * 60)
 
         for sid in candidates:
             is_legal = True
@@ -370,9 +380,13 @@ class RosterOptimizer:
             if prev_assign and prev_assign['shift'] not in ["Off", "Leave", "MC"]:
                 p_def = next((s for s in shift_definitions if s['Name'] == prev_assign['shift']), None)
                 if p_def:
-                    p_end_abs = int(p_def['Start Time']) + (int(p_def['Duration'])*100)
-                    gap = (t_start + 2400) - p_end_abs
-                    if gap < min_rest: is_legal = False
+                    p_start_val = int(p_def['Start Time'])
+                    p_dur_hours = float(p_def['Duration'])
+                    p_start_min = (p_start_val // 100) * 60 + (p_start_val % 100)
+                    p_end_min = p_start_min + int(p_dur_hours * 60)
+
+                    gap = (t_start_min + 24 * 60) - p_end_min
+                    if gap < min_rest_min: is_legal = False
 
             # NEXT DAY CHECK
             if is_legal:
@@ -381,9 +395,11 @@ class RosterOptimizer:
                 if next_assign and next_assign['shift'] not in ["Off", "Leave", "MC"]:
                     n_def = next((s for s in shift_definitions if s['Name'] == next_assign['shift']), None)
                     if n_def:
-                        n_start = int(n_def['Start Time'])
-                        gap = (n_start + 2400) - t_end_abs
-                        if gap < min_rest: is_legal = False
+                        n_start_val = int(n_def['Start Time'])
+                        n_start_min = (n_start_val // 100) * 60 + (n_start_val % 100)
+
+                        gap = (n_start_min + 24 * 60) - t_end_min
+                        if gap < min_rest_min: is_legal = False
             
             if is_legal: valid.append(sid)
         return valid
@@ -401,10 +417,11 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
     # Build Shift Map
     shift_map = {}
     for s in shift_definitions:
-        start = int(s['Start Time'])
-        dur = int(s['Duration'])
-        end_abs = start + (dur * 100)
-        shift_map[s['Name']] = {'start': start, 'end_abs': end_abs, 'req': s['Staff Needed']}
+        start_val = int(s['Start Time'])
+        dur_hours = float(s['Duration'])
+        start_min = (start_val // 100) * 60 + (start_val % 100)
+        end_min = start_min + int(dur_hours * 60)
+        shift_map[s['Name']] = {'start_min': start_min, 'end_min': end_min, 'req': s['Staff Needed']}
 
     # 1. Check Understaffing
     coverage_counter = Counter()
@@ -428,7 +445,7 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
                 })
 
     # 2. Check Rest Violations
-    min_rest = rules.get('min_rest_hours', 10) * 100
+    min_rest_min = int(rules.get('min_rest_hours', 10) * 60)
     # Sort by Staff -> Date
     sorted_data = sorted(working_assignments, key=lambda x: (x['staff_id'], x['date']))
 
@@ -446,14 +463,14 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
             prev_def = shift_map[curr['shift']]
             curr_def = shift_map[next_s['shift']]
 
-            prev_end = prev_def['end_abs']
-            curr_start = curr_def['start'] + 2400 # Next day adds 24h
-            gap = curr_start - prev_end
+            prev_end_min = prev_def['end_min']
+            curr_start_min = curr_def['start_min'] + 24 * 60 # Next day adds 24h
+            gap_min = curr_start_min - prev_end_min
 
-            if gap < min_rest:
+            if gap_min < min_rest_min:
                 errors.append({
                     "type": "Rest Violation",
-                    "msg": f"⚠️ Rest Violation: {curr['staff_id']} on {next_s['date']}. Gap is {gap/100}h (Min {min_rest/100}h).",
+                    "msg": f"⚠️ Rest Violation: {curr['staff_id']} on {next_s['date']}. Gap is {gap_min/60:.1f}h (Min {min_rest_min/60:.1f}h).",
                     "search_query": "minimum rest period",
                     "meta": {"date": next_s['date'].isoformat(), "shift": next_s['shift'], "violator": curr['staff_id']}
                 })
