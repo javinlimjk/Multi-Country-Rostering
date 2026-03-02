@@ -103,7 +103,7 @@ class AgentChatRequest(BaseModel):
 def health_check():
     return {"status": "active", "version": "6.0"}
 
-@app.post("/forecast")
+@app.post("/forecast", dependencies=[Depends(verify_api_key)])
 def get_staffing_forecast(payload: ForecastRequest):
     forecaster = StaffingForecaster()
     return forecaster.calculate_needs_simulation(
@@ -113,7 +113,7 @@ def get_staffing_forecast(payload: ForecastRequest):
         absence_buffer=payload.buffer
     )
 
-@app.post("/optimize")
+@app.post("/optimize", dependencies=[Depends(verify_api_key)])
 def generate_roster(payload: OptimizeRequest):
     # 1. Get Base Rules
     rules = get_rules_for_country(payload.country)
@@ -175,7 +175,7 @@ def validate_roster(payload: ValidateRequest):
             "compliance_audit": audit_report
         }
 
-@app.post("/recommend")
+@app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend_staff(payload: RecommendationRequest):
     rules = get_rules_for_country(payload.country)
     opt = RosterOptimizer(payload.staff_list, [], rules)
@@ -187,7 +187,7 @@ def recommend_staff(payload: RecommendationRequest):
     )
     return {"recommendation": suggestion}
 
-@app.post("/metrics")
+@app.post("/metrics", dependencies=[Depends(verify_api_key)])
 def calculate_live_metrics(payload: MetricsRequest):
     # Convert simple dicts back to internal structure for calculation
     # We create dummy RosterAssignment objects
@@ -222,12 +222,12 @@ def search_laws(query: str, country: str = "SG"): # Added country param
         mlflow.log_metric("results_count", len(results))
         return results
 
-@app.post("/agent/chat")
+@app.post("/agent/chat", dependencies=[Depends(verify_api_key)])
 def agent_chat(payload: AgentChatRequest):
     agent = SchedulingAgent()
     return agent.process_message(payload.message, current_state_dict=payload.state)
 
-@app.get("/demand/{airport_code}")
+@app.get("/demand/{airport_code}", dependencies=[Depends(verify_api_key)])
 def get_demand(airport_code: str):
     service = FlightService()
     flights = service.get_flights(airport_code)
