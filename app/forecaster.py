@@ -49,7 +49,6 @@ class StaffingForecaster:
                     min_feasible_found = True
                     logs.append(f"✅ Feasible Solution Found: {current_staff_count} Staff")
                 else:
-                    # logs.append(f"❌ {current_staff_count} Staff: Too few. Adding +1...")
                     current_staff_count += 1
             
             min_required = current_staff_count
