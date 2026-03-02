@@ -111,17 +111,16 @@ class RosterOptimizer:
                 end_m = end_min % 60
                 end_t = end_h * 100 + end_m
 
-                # Create 'count' number of shifts for this slot
-                # Each shift needs 1 person
-                for i in range(count):
+                # Create a single shift for this slot with required_staff_count = count
+                if count > 0:
                     shift = Shift(
-                        id=f"GEN_{time_str}_{i}",
+                        id=f"GEN_{time_str}",
                         date=today_str,
                         type="Generated",
                         start_time=start_t,
                         end_time=end_t,
                         duration_hours=0.5, # 30 mins
-                        required_staff_count=1
+                        required_staff_count=count
                     )
                     generated_shifts.append(shift)
             except Exception as e:
