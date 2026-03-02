@@ -125,7 +125,7 @@ class RosterOptimizer:
                     )
                     generated_shifts.append(shift)
             except Exception as e:
-                print(f"Error generating shift for {time_str}: {e}")
+                raise ValueError(f"Error generating shift for {time_str}: {e}") from e
 
         return generated_shifts
 
