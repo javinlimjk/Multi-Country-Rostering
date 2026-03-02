@@ -222,23 +222,13 @@ class RosterOptimizer:
 
                     # Calculate absolute end time of A and start time of B in minutes
                     a_start_min = (shift_a.start_time // 100) * 60 + (shift_a.start_time % 100)
-                    a_end_min = (shift_a.end_time // 100) * 60 + (shift_a.end_time % 100)
-                    if a_end_min < a_start_min:
-                        a_end_min += 24 * 60
+                    # Instead of military end_time parsing which fails on 60m rollover, we calculate it natively:
+                    a_end_min = a_start_min + int(shift_a.duration_hours * 60)
 
                     b_start_min = (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100)
                     b_start_min += day_diff * 24 * 60
 
-                    # Ensure shift_a happens before shift_b conceptually, else swap roles
-                    # But since we are looking at combinations, we can check both directions
-                    gap_ab = b_start_min - a_end_min
-
-                    b_end_min = (shift_b.end_time // 100) * 60 + (shift_b.end_time % 100)
-                    if b_end_min < (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100):
-                        b_end_min += 24 * 60
-                    b_end_min += day_diff * 24 * 60
-
-                    gap_ba = a_start_min - (b_end_min - day_diff * 24 * 60) + day_diff * 24 * 60 # wait, better logic below:
+                    b_end_min = b_start_min + int(shift_b.duration_hours * 60)
 
                     # We just need to check if the time segments overlap or are too close
                     # Segment A: [a_start, a_end] (relative to d_a)
@@ -252,13 +242,9 @@ class RosterOptimizer:
                                 self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
                     else:
                         # shift_b starts before shift_a ends.
-                        # Segment B: [b_start, b_end]
-                        b_e = (shift_b.end_time // 100) * 60 + (shift_b.end_time % 100)
-                        if b_e < (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100):
-                            b_e += 24 * 60
-                        b_e += day_diff * 24 * 60
-
                         a_s = a_start_min
+                        b_e = b_end_min
+
                         if a_s >= b_e:
                             if (a_s - b_e) < min_rest_minutes:
                                 for staff in self.staff_list:
