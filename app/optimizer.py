@@ -1,7 +1,7 @@
 # app/optimizer.py
 from ortools.sat.python import cp_model
 from app.models import Staff, Shift, Country, RosterAssignment
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 import time
 
@@ -257,9 +257,10 @@ class RosterOptimizer:
 
     def _apply_max_consecutive_days(self):
         max_d = self.rules.get('max_consecutive_days', 6)
-        all_dates = sorted(list(set(s.date for s in self.shifts)))
-        shifts_by_date = {d: [] for d in all_dates}
-        for s in self.shifts: shifts_by_date[s.date].append(s)
+        shifts_by_date = defaultdict(list)
+        for s in self.shifts:
+            shifts_by_date[s.date].append(s)
+        all_dates = sorted(shifts_by_date.keys())
         
         for staff in self.staff_list:
             # Sliding window of size max_d + 1
