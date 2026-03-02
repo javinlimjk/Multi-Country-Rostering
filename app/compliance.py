@@ -10,6 +10,9 @@ from app.optimizer import validate_roster_logic
 from app.rag.ingest import run_ingestion
 from app.rag.retriever import get_retriever
 from app.rag.chain import get_compliance_chain
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AuditDataProcessor:
     """
@@ -90,19 +93,19 @@ class ComplianceEngine:
         """
         Initializes the Compliance Auditor Agent (RAG-enhanced).
         """
-        print("🧠 Loading Compliance Engine v2 (RAG)...")
+        logger.info("🧠 Loading Compliance Engine v2 (RAG)...")
         # RAG components are loaded on demand via app.rag modules
 
     def load_laws(self, directory_path: str):
         """
         Triggers the ingestion pipeline.
         """
-        print(f"📂 Scanning {directory_path} for legal documents...")
+        logger.info(f"📂 Scanning {directory_path} for legal documents...")
         try:
             run_ingestion(directory_path, force=True)
-            print("✅ Legal Knowledge Base Updated.")
+            logger.info("✅ Legal Knowledge Base Updated.")
         except Exception as e:
-            print(f"❌ Failed to load laws: {e}")
+            logger.error(f"❌ Failed to load laws: {e}")
 
     def check_compliance(self, query: str, country_code: str = None, k: int = 3):
         """
@@ -133,28 +136,34 @@ class ComplianceEngine:
         except Exception as e:
             return [f"Retrieval error: {e}"]
 
-    def _mask_pii(self, text: str) -> str:
-        """
-        Masks PII from the roster summary before sending to LLM.
-        """
-        # Mask Staff IDs
-        return re.sub(r"Staff \w+", "Employee_ID_Masked", text)
-
     def audit_roster(self, assignments: List[Dict], shift_definitions: List[Dict], country_code: str) -> Dict:
         """
         Main Agent Function:
-        1. Pre-process data.
-        2. Mask PII.
+        1. Mask PII in assignments.
+        2. Pre-process data.
         3. Deterministic Validation.
         4. RAG Chain Execution.
         """
-        # Step 1: Pre-process
-        roster_summary = AuditDataProcessor.process(assignments, shift_definitions)
+        # Step 1: Mask PII explicitly
+        masked_assignments = []
+        id_map = {}
+        next_id = 1
 
-        # Step 2: Mask PII
-        masked_summary = self._mask_pii(roster_summary)
+        for assignment in assignments:
+            staff_id = assignment.get('staff_id')
+            if staff_id not in id_map:
+                id_map[staff_id] = f"Employee_{next_id}"
+                next_id += 1
+
+            masked_assignment = assignment.copy()
+            masked_assignment['staff_id'] = id_map[staff_id]
+            masked_assignments.append(masked_assignment)
+
+        # Step 2: Pre-process
+        masked_summary = AuditDataProcessor.process(masked_assignments, shift_definitions)
 
         # Step 3: Deterministic Validation
+        # Use original assignments for deterministic validation so errors point to actual staff
         rules = get_rules_for_country(country_code)
         deterministic_errors = validate_roster_logic(assignments, shift_definitions, rules)
 
@@ -176,7 +185,7 @@ class ComplianceEngine:
         )
 
         try:
-            print("🤖 invoking RAG Chain...")
+            logger.info("🤖 invoking RAG Chain...")
             result = chain.invoke({
                 "query": query,
                 "roster_data": masked_summary,
@@ -208,10 +217,10 @@ class ComplianceEngine:
             return legacy_report
 
         except Exception as e:
-            print(f"❌ RAG Audit Failed: {e}")
+            logger.error(f"❌ RAG Audit Failed: {e}")
 
             # Fallback to deterministic results if LLM fails
-            print("⚠️ Falling back to deterministic logic only.")
+            logger.warning("⚠️ Falling back to deterministic logic only.")
 
             fallback_status = "FAIL" if deterministic_errors else "PASS"
             fallback_summary = "RAG Audit System unavailable. Report based on deterministic rules only."
