@@ -245,7 +245,7 @@ def run_optimization(start_date, days_count, country_enum):
     }
 
     try:
-        resp = requests.post(f"{API_URL}/optimize", json=payload, timeout=30)
+        resp = requests.post(f"{API_URL}/optimize", json=payload, headers=API_HEADERS, timeout=30)
         if resp.status_code == 200:
             result = resp.json()
             st.session_state['last_metrics'] = result['metrics']
@@ -647,7 +647,7 @@ if page == "📅 Roster Dashboard":
                                             "country": country_enum
                                         }
                                         try:
-                                            rr = requests.post(f"{API_URL}/recommend", json=p_rec, timeout=10)
+                                            rr = requests.post(f"{API_URL}/recommend", json=p_rec, headers=API_HEADERS, timeout=10)
                                             if rr.status_code == 200:
                                                 st.session_state['recommendation'] = rr.json()['recommendation']
                                                 st.session_state['rec_context'] = meta
@@ -688,7 +688,7 @@ elif page == "🤖 AI Copilot":
             try:
                 # Sync state
                 payload = {"message": prompt, "state": st.session_state.roster_state}
-                r = requests.post(f"{API_URL}/agent/chat", json=payload, timeout=15)
+                r = requests.post(f"{API_URL}/agent/chat", json=payload, headers=API_HEADERS, timeout=15)
                 if r.status_code == 200:
                     data = r.json()
                     bot_reply = data.get('reply')
