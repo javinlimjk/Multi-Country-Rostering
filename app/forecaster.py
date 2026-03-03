@@ -99,7 +99,12 @@ class StaffingForecaster:
 
                 if count <= 0 or dur <= 0: continue
 
-                end_t = (start_t + (dur * 100)) % 2400
+                start_min = (start_t // 100) * 60 + (start_t % 100)
+                end_min = start_min + int(dur * 60)
+
+                end_h = (end_min // 60) % 24
+                end_m = end_min % 60
+                end_t = end_h * 100 + end_m
                 
                 for i in range(count):
                     shifts.append(Shift(
