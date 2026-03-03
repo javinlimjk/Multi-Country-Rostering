@@ -1,6 +1,6 @@
 import os
 import pickle
-from langchain.retrievers import EnsembleRetriever
+from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import FAISS, Pinecone
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -26,13 +26,30 @@ def get_retriever(k: int = 4, filters: dict = None):
                 embedding=embeddings
             )
     else:
-        # Load FAISS
-        if os.path.exists(RAGConfig.FAISS_INDEX_PATH):
+        # Load FAISS safely via native index and JSON metadata
+        faiss_file = os.path.join(RAGConfig.FAISS_INDEX_PATH, "index.faiss")
+        meta_file = os.path.join(RAGConfig.FAISS_INDEX_PATH, "index_meta.json")
+        if os.path.exists(faiss_file) and os.path.exists(meta_file):
             try:
-                vector_store = FAISS.load_local(
-                    RAGConfig.FAISS_INDEX_PATH,
-                    embeddings,
-                    allow_dangerous_deserialization=True
+                import json
+                import faiss
+                from langchain_community.docstore.in_memory import InMemoryDocstore
+                from langchain_core.documents import Document
+
+                loaded_index = faiss.read_index(faiss_file)
+                with open(meta_file, "r") as f:
+                    data = json.load(f)
+
+                loaded_docstore = InMemoryDocstore({k: Document(**v) for k, v in data["docstore"].items()})
+                id_mapping = {k: v for k, v in data["id_mapping"].items()}
+                if id_mapping:
+                    id_mapping = {int(k): v for k, v in id_mapping.items()}
+
+                vector_store = FAISS(
+                    embedding_function=embeddings,
+                    index=loaded_index,
+                    docstore=loaded_docstore,
+                    index_to_docstore_id=id_mapping
                 )
             except Exception as e:
                 print(f"⚠️ FAISS Load Error: {e}")
@@ -50,13 +67,19 @@ def get_retriever(k: int = 4, filters: dict = None):
     vs_retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
 
     # 2. BM25 Retriever
-    bm25_path = os.path.join(RAGConfig.BASE_DIR, "bm25_retriever.pkl")
+    bm25_path = os.path.join(RAGConfig.BASE_DIR, "bm25_docs.json")
     bm25_retriever = None
 
     if os.path.exists(bm25_path):
         try:
-            with open(bm25_path, "rb") as f:
-                bm25_retriever = pickle.load(f)
+            import json
+            from langchain_core.documents import Document
+            with open(bm25_path, "r") as f:
+                docs_dict = json.load(f)
+
+            docs = [Document(**d) for d in docs_dict]
+            if docs:
+                bm25_retriever = BM25Retriever.from_documents(docs)
                 bm25_retriever.k = k
         except Exception as e:
             print(f"⚠️ Failed to load BM25: {e}")
