@@ -1,6 +1,6 @@
 # app/optimizer.py
 from ortools.sat.python import cp_model
-from app.models import Staff, Shift, Country, RosterAssignment
+from app.models import Staff, Shift, RosterAssignment
 from collections import Counter
 from datetime import date, timedelta
 import time
