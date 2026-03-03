@@ -93,12 +93,16 @@ class IngestionPipeline:
 
         # Create/Update BM25 Retriever (Pickle it for hybrid search)
         try:
+            import json
             print("Creating BM25 Retriever...")
             bm25_retriever = BM25Retriever.from_documents(chunks)
-            bm25_path = os.path.join(RAGConfig.BASE_DIR, "bm25_retriever.pkl")
-            with open(bm25_path, "wb") as f:
-                pickle.dump(bm25_retriever, f)
-            print(f"✅ BM25 Retriever saved to {bm25_path}")
+            bm25_path = os.path.join(RAGConfig.BASE_DIR, "bm25_docs.json")
+
+            # Serialize documents to JSON instead of pickling the object
+            docs_dict = [doc.dict() for doc in bm25_retriever.docs]
+            with open(bm25_path, "w") as f:
+                json.dump(docs_dict, f)
+            print(f"✅ BM25 Documents saved to {bm25_path}")
         except Exception as e:
             print(f"❌ Failed to create BM25 Retriever: {e}")
 
@@ -110,25 +114,55 @@ class IngestionPipeline:
     def _setup_faiss(self, chunks: List[Document], force_rebuild: bool):
         index_path = RAGConfig.FAISS_INDEX_PATH
 
-        if os.path.exists(index_path) and not force_rebuild:
+        faiss_file = os.path.join(index_path, "index.faiss")
+        meta_file = os.path.join(index_path, "index_meta.json")
+
+        if os.path.exists(faiss_file) and os.path.exists(meta_file) and not force_rebuild:
             print(f"Start loading existing FAISS index from {index_path}")
             try:
-                vector_store = FAISS.load_local(
-                    index_path,
-                    self.embeddings,
-                    allow_dangerous_deserialization=True # Trusted local source
+                import json
+                import faiss
+                from langchain_community.docstore.in_memory import InMemoryDocstore
+
+                loaded_index = faiss.read_index(faiss_file)
+                with open(meta_file, "r") as f:
+                    data = json.load(f)
+
+                loaded_docstore = InMemoryDocstore({k: Document(**v) for k, v in data["docstore"].items()})
+                id_mapping = {k: v for k, v in data["id_mapping"].items()}
+                if id_mapping:
+                    id_mapping = {int(k): v for k, v in id_mapping.items()}
+
+                vector_store = FAISS(
+                    embedding_function=self.embeddings,
+                    index=loaded_index,
+                    docstore=loaded_docstore,
+                    index_to_docstore_id=id_mapping
                 )
-                # In a real system, we'd add new documents here.
-                # For simplicity, we just return the existing store if not forcing rebuild.
-                print("✅ FAISS index loaded.")
+                print("✅ FAISS index loaded successfully.")
                 return vector_store
             except Exception as e:
                 print(f"⚠️ Failed to load FAISS index: {e}. Rebuilding...")
 
         print("🏗️ Building new FAISS index...")
+        import json
+        import faiss
+
         vector_store = FAISS.from_documents(chunks, self.embeddings)
-        vector_store.save_local(index_path)
-        print(f"💾 FAISS index saved to {index_path}")
+
+        # Save index natively
+        os.makedirs(index_path, exist_ok=True)
+        faiss.write_index(vector_store.index, os.path.join(index_path, "index.faiss"))
+
+        # Extract docstore dict and id mapping safely
+        docstore_dict = {k: v.dict() for k, v in vector_store.docstore._dict.items()}
+        id_mapping = vector_store.index_to_docstore_id
+
+        safe_path = os.path.join(index_path, "index_meta.json")
+        with open(safe_path, "w") as f:
+            json.dump({"docstore": docstore_dict, "id_mapping": id_mapping}, f)
+
+        print(f"💾 FAISS index and metadata saved to {index_path}")
         return vector_store
 
     def _setup_pinecone(self, chunks: List[Document]):
