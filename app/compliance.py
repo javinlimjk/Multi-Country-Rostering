@@ -163,14 +163,17 @@ class ComplianceEngine:
         masked_summary = AuditDataProcessor.process(masked_assignments, shift_definitions)
 
         # Step 3: Deterministic Validation
-        # Use original assignments for deterministic validation so errors point to actual staff
+        # Use original assignments for deterministic validation so errors point to actual staff for the fallback
         rules = get_rules_for_country(country_code)
         deterministic_errors = validate_roster_logic(assignments, shift_definitions, rules)
 
+        # Generate a masked version of deterministic errors so the LLM doesn't see real PII
+        masked_deterministic_errors = validate_roster_logic(masked_assignments, shift_definitions, rules)
+
         det_error_str = "No algorithmic violations found."
-        if deterministic_errors:
+        if masked_deterministic_errors:
             det_error_str = "CRITICAL ALGORITHMIC VIOLATIONS (Must be addressed):\n"
-            for err in deterministic_errors:
+            for err in masked_deterministic_errors:
                 det_error_str += f"- {err['type']}: {err['msg']}\n"
 
         # Step 4: RAG Chain
