@@ -1,7 +1,6 @@
 # frontend/dashboard.py
 import streamlit as st
 import pandas as pd
-import requests
 import plotly.express as px
 from datetime import date, timedelta
 import os
@@ -10,10 +9,9 @@ import sys
 # Add parent directory to path to import models if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# API CONFIGURATION
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
-API_KEY = os.getenv("COMPLIANCE_API_KEY", "")
-API_HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
+from api_service import APIService
+
+api_service = APIService()
 
 st.set_page_config(
     page_title="SATS Roster AI", 
@@ -171,7 +169,7 @@ def get_theme_css(mode):
 # --- SYSTEM HEALTH ---
 server_status = False
 try:
-    requests.get(f"{API_URL}/", timeout=1)
+    api_service.check_health()
     server_status = True
 except:
     server_status = False
@@ -245,7 +243,7 @@ def run_optimization(start_date, days_count, country_enum):
     }
 
     try:
-        resp = requests.post(f"{API_URL}/optimize", json=payload, headers=API_HEADERS, timeout=30)
+        resp = api_service.optimize(payload)
         if resp.status_code == 200:
             result = resp.json()
             st.session_state['last_metrics'] = result['metrics']
@@ -384,7 +382,7 @@ if page == "📅 Roster Dashboard":
                         "buffer": abs_rate / 100.0
                     }
                     try:
-                        r = requests.post(f"{API_URL}/forecast", json=payload, headers=API_HEADERS, timeout=10)
+                        r = api_service.forecast(payload)
                         if r.status_code == 200:
                             st.session_state['forecast_result'] = r.json()
                             st.toast("Simulation Complete")
@@ -593,7 +591,7 @@ if page == "📅 Roster Dashboard":
                         "country": country_enum
                     }
                     try:
-                        r = requests.post(f"{API_URL}/validate", json=payload, headers=API_HEADERS, timeout=15)
+                        r = api_service.validate(payload)
                         if r.status_code == 200:
                             st.session_state['audit_result'] = r.json()
                             st.toast("Audit Complete")
@@ -647,7 +645,7 @@ if page == "📅 Roster Dashboard":
                                             "country": country_enum
                                         }
                                         try:
-                                            rr = requests.post(f"{API_URL}/recommend", json=p_rec, headers=API_HEADERS, timeout=10)
+                                            rr = api_service.recommend(p_rec)
                                             if rr.status_code == 200:
                                                 st.session_state['recommendation'] = rr.json()['recommendation']
                                                 st.session_state['rec_context'] = meta
@@ -688,7 +686,7 @@ elif page == "🤖 AI Copilot":
             try:
                 # Sync state
                 payload = {"message": prompt, "state": st.session_state.roster_state}
-                r = requests.post(f"{API_URL}/agent/chat", json=payload, headers=API_HEADERS, timeout=15)
+                r = api_service.agent_chat(payload)
                 if r.status_code == 200:
                     data = r.json()
                     bot_reply = data.get('reply')
@@ -707,7 +705,7 @@ elif page == "🤖 AI Copilot":
         kq = st.text_input("Search Specific Regulation")
         if kq:
             try:
-                r = requests.get(f"{API_URL}/compliance/search", params={"query": kq, "country": country_enum}, headers=API_HEADERS)
+                r = api_service.search_compliance(kq, country_enum)
                 if r.status_code == 200:
                     for item in r.json():
                          with st.container():

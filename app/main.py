@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI, HTTPException, Security, status, Depends
+from fastapi import FastAPI, HTTPException, Security, status, Depends, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -39,21 +39,23 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     )
 
 # --- GLOBAL STATE ---
-compliance_engine = None
-
 @app.on_event("startup")
 def load_models():
-    global compliance_engine
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     laws_path = os.path.join(base_dir, "data", "laws")
     
     logger.info(f"🚀 Server Starting... Scanning for laws in {laws_path}")
-    compliance_engine = ComplianceEngine()
+    engine = ComplianceEngine()
     
     if os.path.exists(laws_path):
-        compliance_engine.load_laws(laws_path)
+        engine.load_laws(laws_path)
     else:
         logger.warning("⚠️ Warning: Laws directory not found. RAG features will be disabled.")
+
+    app.state.compliance_engine = engine
+
+def get_compliance_engine(request: Request):
+    return getattr(request.app.state, "compliance_engine", None)
     
     # Setup MLflow
     mlflow_dir = os.path.join(base_dir, "mlruns")
@@ -145,7 +147,7 @@ def generate_roster(payload: OptimizeRequest):
         return result 
 
 @app.post("/validate", dependencies=[Depends(verify_api_key)])
-def validate_roster(payload: ValidateRequest):
+def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(get_compliance_engine)):
     with mlflow.start_run():
         mlflow.log_param("endpoint", "validate")
         mlflow.log_param("country", payload.country)
@@ -157,8 +159,8 @@ def validate_roster(payload: ValidateRequest):
 
         # 2. AI Compliance Audit (Nuanced Checks)
         audit_report = None
-        if compliance_engine:
-            audit_report = compliance_engine.audit_roster(
+        if engine:
+            audit_report = engine.audit_roster(
                 payload.assignments,
                 payload.shift_definitions,
                 country_code=payload.country
@@ -207,17 +209,17 @@ def calculate_live_metrics(payload: MetricsRequest):
     return opt.calculate_metrics_only(assignments)
 
 @app.get("/compliance/search", dependencies=[Depends(verify_api_key)])
-def search_laws(query: str, country: str = "SG"): # Added country param
+def search_laws(query: str, country: str = "SG", engine: Optional[Any] = Depends(get_compliance_engine)): # Added country param
     with mlflow.start_run():
         mlflow.log_param("endpoint", "search")
         mlflow.log_param("query", query)
         mlflow.log_param("country", country)
 
-        if not compliance_engine:
+        if not engine:
             raise HTTPException(status_code=503, detail="AI Engine not ready")
 
         # Pass the country code to the engine
-        results = compliance_engine.check_compliance(query, country_code=country)
+        results = engine.check_compliance(query, country_code=country)
 
         mlflow.log_metric("results_count", len(results))
         return results
