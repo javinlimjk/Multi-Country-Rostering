@@ -2,8 +2,9 @@ import os
 import re
 import json
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Dict, Any
+from pydantic import BaseModel, ValidationError
 
 from app.rules import get_rules_for_country
 from app.optimizer import validate_roster_logic
@@ -13,6 +14,10 @@ from app.rag.chain import get_compliance_chain
 import logging
 
 logger = logging.getLogger(__name__)
+
+class DateValidator(BaseModel):
+    date: date
+    model_config = {"extra": "ignore"}
 
 class AuditDataProcessor:
     """
@@ -52,17 +57,18 @@ class AuditDataProcessor:
                     current_streak = 0
                     continue
 
+                try:
+                    validated = DateValidator(date=row.date)
+                    date_obj = validated.date
+                except ValidationError as e:
+                    msg = f"WARNING: Invalid date format for staff {staff_id} on {row.date}. Skipping record."
+                    logger.warning(f"{msg} - Error details: {e}")
+                    staff_summaries.append(msg)
+                    continue
+
                 s_def = shift_map[shift_name]
                 duration = s_def.get('Duration', 8)
                 total_hours += duration
-
-                if isinstance(row.date, str):
-                    try:
-                        date_obj = datetime.strptime(row.date, "%Y-%m-%d").date()
-                    except:
-                        continue # Skip invalid dates
-                else:
-                    date_obj = row.date
 
                 if last_date:
                     delta = (date_obj - last_date).days
