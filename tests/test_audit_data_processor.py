@@ -79,16 +79,14 @@ class TestAuditDataProcessor:
         shift_definitions = [{"Name": "Morning", "Duration": 8}]
         result = AuditDataProcessor.process(assignments, shift_definitions)
 
-        # invalid-date should be skipped, meaning the sequence is interrupted
-        # consecutive days becomes 1 for 10-01 and 1 for 10-03. Max is 1.
-        # the duration is added before the date is checked, so it adds to total hours
-        # total hours is 24 (for the three shifts)
-        expected = (
+        warning_msg = "WARNING: Invalid date format for staff S1 on invalid-date. Skipping record."
+        summary_msg = (
             "Staff S1:\n"
-            "  - Total Hours: 24\n"
+            "  - Total Hours: 16\n"
             "  - Max Consecutive Days: 1\n"
             "  - Shift Pattern: 2023-10-01: Morning (8h), 2023-10-03: Morning (8h)..."
         )
+        expected = f"{warning_msg}\n{summary_msg}"
         assert result == expected
 
     def test_datetime_date_object(self):
