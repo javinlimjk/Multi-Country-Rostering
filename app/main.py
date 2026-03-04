@@ -19,6 +19,14 @@ from app.compliance import ComplianceEngine
 from app.rules import get_rules_for_country
 from app.agent import SchedulingAgent
 from app.demand_planner import FlightService, calculate_required_staff
+from celery.result import AsyncResult
+from app.tasks import (
+    task_forecast,
+    task_optimize,
+    task_validate,
+    task_recommend,
+    task_agent_chat
+)
 
 app = FastAPI(title="SATS Rostering API", version="6.0")
 
@@ -108,46 +116,45 @@ class AgentChatRequest(BaseModel):
 def health_check():
     return {"status": "active", "version": "6.0"}
 
+@app.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
+def get_task_status(task_id: str):
+    task_result = AsyncResult(task_id)
+    if task_result.state == 'PENDING':
+        return {"state": task_result.state, "status": "Pending..."}
+    elif task_result.state != 'FAILURE':
+        return {
+            "state": task_result.state,
+            "result": task_result.result,
+        }
+    else:
+        # something went wrong in the background job
+        return {
+            "state": task_result.state,
+            "error": str(task_result.info), # this is the exception raised
+        }
+
 @app.post("/forecast", dependencies=[Depends(verify_api_key)])
 def get_staffing_forecast(payload: ForecastRequest):
-    forecaster = StaffingForecaster()
-    return forecaster.calculate_needs_simulation(
+    task = task_forecast.delay(
         payload.shift_inputs, 
         payload.days, 
-        country=payload.country, 
-        absence_buffer=payload.buffer
+        payload.country,
+        payload.buffer
     )
+    return {"task_id": task.id}
 
 @app.post("/optimize", dependencies=[Depends(verify_api_key)])
 def generate_roster(payload: OptimizeRequest):
-    # 1. Get Base Rules
-    rules = get_rules_for_country(payload.country)
-    
-    # 2. Apply Overrides (from Frontend "Advanced Policy" tab)
-    if payload.rules:
-        rules.update(payload.rules)
-
-    logger.info(f"Running Optimization for {len(payload.staff)} staff")
-
-    # Pass demand_signal to optimizer
-    opt = RosterOptimizer(payload.staff, payload.shifts, rules, demand_signal=payload.demand_signal)
-    
-    # 3. Solve & Log
-    with mlflow.start_run():
-        mlflow.log_param("country", payload.country)
-        mlflow.log_param("staff_count", len(payload.staff))
-        
-        result = opt.solve()
-        
-        if not result:
-            mlflow.log_metric("success", 0)
-            raise HTTPException(status_code=400, detail="Infeasible solution. Constraints are too tight for the number of staff.")
-        
-        metrics = result['metrics']
-        mlflow.log_metric("success", 1)
-        mlflow.log_metric("runtime", metrics['runtime_seconds'])
-        
-        return result 
+    staff_dicts = [s.dict() for s in payload.staff]
+    shift_dicts = [s.dict() for s in payload.shifts]
+    task = task_optimize.delay(
+        staff_dicts,
+        shift_dicts,
+        payload.country,
+        payload.rules,
+        payload.demand_signal
+    )
+    return {"task_id": task.id}
 
 @app.post("/validate", dependencies=[Depends(verify_api_key)])
 def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(get_compliance_engine)):
@@ -182,15 +189,16 @@ def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(ge
 
 @app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend_staff(payload: RecommendationRequest):
-    rules = get_rules_for_country(payload.country)
-    opt = RosterOptimizer(payload.staff_list, [], rules)
-    suggestion = opt.recommend_replacement(
-        payload.date_target, 
+    staff_dicts = [s.dict() for s in payload.staff_list]
+    task = task_recommend.delay(
+        payload.date_target.isoformat() if isinstance(payload.date_target, date) else payload.date_target,
         payload.shift_name, 
         payload.assignments, 
-        payload.shift_definitions
+        payload.shift_definitions,
+        staff_dicts,
+        payload.country
     )
-    return {"recommendation": suggestion}
+    return {"task_id": task.id}
 
 @app.post("/metrics", dependencies=[Depends(verify_api_key)])
 def calculate_live_metrics(payload: MetricsRequest):
@@ -229,8 +237,8 @@ def search_laws(query: str, country: str = "SG", engine: Optional[Any] = Depends
 
 @app.post("/agent/chat", dependencies=[Depends(verify_api_key)])
 def agent_chat(payload: AgentChatRequest):
-    agent = SchedulingAgent()
-    return agent.process_message(payload.message, current_state_dict=payload.state)
+    task = task_agent_chat.delay(payload.message, payload.state)
+    return {"task_id": task.id}
 
 @app.get("/demand/{airport_code}", dependencies=[Depends(verify_api_key)])
 def get_demand(airport_code: str):

@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import date, timedelta
 import os
 import sys
+import time
 
 # Add parent directory to path to import models if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -245,23 +246,30 @@ def run_optimization(start_date, days_count, country_enum):
     try:
         resp = api_service.optimize(payload)
         if resp.status_code == 200:
-            result = resp.json()
-            st.session_state['last_metrics'] = result['metrics']
-            data = [{"Date": x['date'], "Staff": x['staff_id'], "Shift": x['shift_type']} for x in result['assignments']]
-            df = pd.DataFrame(data)
-            if not df.empty:
-                pivot = df.pivot(index="Staff", columns="Date", values="Shift").fillna("Off")
-                st.session_state['roster_data'] = pivot
+            task_id = resp.json().get('task_id')
+            while True:
+                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
+                if status_resp.status_code == 200:
+                    status_data = status_resp.json()
+                    if status_data.get('state') == 'SUCCESS':
+                        result = status_data.get('result')
+                        if result.get("error"):
+                            return False, f"Optimization Failed: {result.get('error')}"
+                        st.session_state['last_metrics'] = result['metrics']
+                        data = [{"Date": x['date'], "Staff": x['staff_id'], "Shift": x['shift_type']} for x in result['assignments']]
+                        df = pd.DataFrame(data)
+                        if not df.empty:
+                            pivot = df.pivot(index="Staff", columns="Date", values="Shift").fillna("Off")
+                            st.session_state['roster_data'] = pivot
 
-            # Update Staff List if auto-generated
-            if not staff_payload:
-                 # Extract unique staff from assignments if we didn't send any
-                 unique_staff = sorted(list(set(x['staff_id'] for x in result['assignments'])))
-                 # Populate session state just for visualization if needed, but 'roster_data' index is better source
-                 pass
+                        if not staff_payload:
+                             pass
 
-            st.session_state['validation_errors'] = []
-            return True, "Success"
+                        st.session_state['validation_errors'] = []
+                        return True, "Success"
+                    elif status_data.get('state') == 'FAILURE':
+                        return False, f"Optimization Failed: {status_data.get('error')}"
+                time.sleep(1)
         return False, f"Optimization Failed: {resp.text}"
     except Exception as e:
         return False, f"API Error: {e}"
@@ -384,8 +392,19 @@ if page == "📅 Roster Dashboard":
                     try:
                         r = api_service.forecast(payload)
                         if r.status_code == 200:
-                            st.session_state['forecast_result'] = r.json()
-                            st.toast("Simulation Complete")
+                            task_id = r.json().get('task_id')
+                            while True:
+                                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
+                                if status_resp.status_code == 200:
+                                    status_data = status_resp.json()
+                                    if status_data.get('state') == 'SUCCESS':
+                                        st.session_state['forecast_result'] = status_data.get('result')
+                                        st.toast("Simulation Complete")
+                                        break
+                                    elif status_data.get('state') == 'FAILURE':
+                                        st.error(f"Forecast Error: {status_data.get('error')}")
+                                        break
+                                time.sleep(1)
                         else: st.error(f"Forecast Error: {r.text}")
                     except Exception as e: st.error(str(e))
 
@@ -593,8 +612,19 @@ if page == "📅 Roster Dashboard":
                     try:
                         r = api_service.validate(payload)
                         if r.status_code == 200:
-                            st.session_state['audit_result'] = r.json()
-                            st.toast("Audit Complete")
+                            task_id = r.json().get('task_id')
+                            while True:
+                                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
+                                if status_resp.status_code == 200:
+                                    status_data = status_resp.json()
+                                    if status_data.get('state') == 'SUCCESS':
+                                        st.session_state['audit_result'] = status_data.get('result')
+                                        st.toast("Audit Complete")
+                                        break
+                                    elif status_data.get('state') == 'FAILURE':
+                                        st.error(f"Audit Failed: {status_data.get('error')}")
+                                        break
+                                time.sleep(1)
                         else: st.error("Audit Failed")
                     except Exception as e: st.error(str(e))
 
@@ -647,9 +677,21 @@ if page == "📅 Roster Dashboard":
                                         try:
                                             rr = api_service.recommend(p_rec)
                                             if rr.status_code == 200:
-                                                st.session_state['recommendation'] = rr.json()['recommendation']
-                                                st.session_state['rec_context'] = meta
-                                                st.rerun()
+                                                task_id = rr.json().get('task_id')
+                                                while True:
+                                                    status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
+                                                    if status_resp.status_code == 200:
+                                                        status_data = status_resp.json()
+                                                        if status_data.get('state') == 'SUCCESS':
+                                                            result = status_data.get('result')
+                                                            st.session_state['recommendation'] = result.get('recommendation')
+                                                            st.session_state['rec_context'] = meta
+                                                            st.rerun()
+                                                            break
+                                                        elif status_data.get('state') == 'FAILURE':
+                                                            st.error(f"Failed: {status_data.get('error')}")
+                                                            break
+                                                    time.sleep(1)
                                             else:
                                                 st.error(f"Failed: {rr.text}")
                                         except Exception as e: st.error(str(e))
@@ -688,14 +730,25 @@ elif page == "🤖 AI Copilot":
                 payload = {"message": prompt, "state": st.session_state.roster_state}
                 r = api_service.agent_chat(payload)
                 if r.status_code == 200:
-                    data = r.json()
-                    bot_reply = data.get('reply')
-                    st.session_state.messages.append({"role": "assistant", "content": bot_reply})
-                    chat_cont.chat_message("assistant").write(bot_reply)
+                    task_id = r.json().get('task_id')
+                    while True:
+                        status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
+                        if status_resp.status_code == 200:
+                            status_data = status_resp.json()
+                            if status_data.get('state') == 'SUCCESS':
+                                data = status_data.get('result')
+                                bot_reply = data.get('reply')
+                                st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+                                chat_cont.chat_message("assistant").write(bot_reply)
 
-                    if data.get('action') == "GENERATE":
-                        st.toast("AI Triggered Optimization...")
-                        run_optimization(date.today(), 7, country_enum)
+                                if data.get('action') == "GENERATE":
+                                    st.toast("AI Triggered Optimization...")
+                                    run_optimization(date.today(), 7, country_enum)
+                                break
+                            elif status_data.get('state') == 'FAILURE':
+                                chat_cont.error(f"AI Error: {status_data.get('error')}")
+                                break
+                        time.sleep(1)
             except Exception as e:
                 chat_cont.error(f"AI Error: {e}")
 

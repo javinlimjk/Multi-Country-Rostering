@@ -13,8 +13,10 @@ class TestSystemIntegration(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
 
-    def test_forecast_endpoint(self):
+    @patch("app.tasks.task_forecast.delay")
+    def test_forecast_endpoint(self, mock_delay):
         """Test /forecast calculation"""
+        mock_delay.return_value.id = "mock-task-id-1"
         payload = {
             "shift_inputs": [
                 {"Name": "Morning", "Start Time": 800, "Duration": 8, "Staff Needed": 5}
@@ -26,13 +28,13 @@ class TestSystemIntegration(unittest.TestCase):
         response = self.client.post("/forecast", json=payload)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("min_staff", data)
-        self.assertIn("rec_staff", data)
-        self.assertGreaterEqual(data["rec_staff"], data["min_staff"])
-        self.assertEqual(data["status"], "OPTIMAL")
+        self.assertIn("task_id", data)
+        self.assertEqual(data["task_id"], "mock-task-id-1")
 
-    def test_optimize_endpoint_float_duration(self):
+    @patch("app.tasks.task_optimize.delay")
+    def test_optimize_endpoint_float_duration(self, mock_delay):
         """Test /optimize with float duration (Regression test for crash)"""
+        mock_delay.return_value.id = "mock-task-id-2"
         staff_data = [
             {"id": "S1", "name": "Alice", "role": "Driver", "country": "SG"},
             {"id": "S2", "name": "Bob", "role": "Loader", "country": "SG"}
@@ -58,36 +60,16 @@ class TestSystemIntegration(unittest.TestCase):
         }
 
         response = self.client.post("/optimize", json=payload)
-
-        # Expect 200 OK or 400 Infeasible (if staff too few)
-        # But NOT 500 Server Error (crash)
-
-        # Here we have 2 staff and 1 shift requiring 1 person. Should be feasible.
-        if response.status_code == 400:
-             # Infeasible might happen due to rules/constraints, but let's check detail
-             print(f"Optimize failed (expected feasibility): {response.text}")
-
-        self.assertNotEqual(response.status_code, 500, "Server crashed with 500!")
         self.assertEqual(response.status_code, 200)
-
         data = response.json()
-        self.assertIn("assignments", data)
-        self.assertIn("metrics", data)
-        # Check if success key exists, OR check status string.
-        # App/optimizer.py line 76 returns "status": self.solver.StatusName(status)
-        # and "runtime_seconds". It does NOT seem to return "success" key in metrics dict inside optimize().
-        # However, app/main.py wraps it. Let's check app/main.py.
-        # main.py: mlflow.log_metric("success", 1) but returns 'result' from opt.solve().
-        # opt.solve() returns metrics dict.
-        # Let's inspect what keys are in metrics.
-        # keys: fairness_gap, shift_count, runtime_seconds, status.
-        # So "success" key is NOT in data["metrics"].
-        self.assertIn("status", data["metrics"])
-        self.assertIn(data["metrics"]["status"], ["OPTIMAL", "FEASIBLE"])
+        self.assertIn("task_id", data)
+        self.assertEqual(data["task_id"], "mock-task-id-2")
 
+    @patch("app.tasks.task_agent_chat.delay")
     @patch("app.agent.genai.GenerativeModel")
-    def test_agent_chat_endpoint(self, mock_genai_model):
+    def test_agent_chat_endpoint(self, mock_genai_model, mock_delay):
         """Test /agent/chat with mocked LLM"""
+        mock_delay.return_value.id = "mock-task-id-3"
         # Mock the LLM response
         mock_chat = MagicMock()
         mock_chat.send_message.return_value.text = """
@@ -107,14 +89,8 @@ class TestSystemIntegration(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
-        self.assertIn("reply", data)
-        self.assertIn("updated_state", data)
-        # Verify state update parsing logic worked (mocked response format dependent)
-        # Note: The Agent logic parses the specific format returned by LLM.
-        # If my mock text above matches the prompt structure expected by Agent, it should work.
-
-        # Let's inspect the reply to ensuring it's not an error message
-        self.assertNotIn("Error", data["reply"])
+        self.assertIn("task_id", data)
+        self.assertEqual(data["task_id"], "mock-task-id-3")
 
 if __name__ == "__main__":
     unittest.main()
