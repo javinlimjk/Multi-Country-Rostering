@@ -8,7 +8,6 @@ from langchain_community.vectorstores import FAISS, Pinecone
 from langchain_core.documents import Document
 from pinecone import Pinecone as PineconeClient, ServerlessSpec
 from langchain_community.retrievers import BM25Retriever
-import pickle
 
 from app.rag.config import RAGConfig
 
@@ -91,7 +90,7 @@ class IngestionPipeline:
             print("⚠️ No chunks to index.")
             return None
 
-        # Create/Update BM25 Retriever (Pickle it for hybrid search)
+        # Create/Update BM25 Retriever (Save it to JSON for hybrid search)
         try:
             import json
             print("Creating BM25 Retriever...")

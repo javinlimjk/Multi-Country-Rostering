@@ -196,63 +196,48 @@ class RosterOptimizer:
 
     def _apply_min_rest_period(self):
         min_rest_minutes = int(self.rules.get('min_rest_hours', 10) * 60)
-        
-        # Group shifts by date
-        shifts_by_date = {}
-        for s in self.shifts:
-            shifts_by_date.setdefault(s.date, []).append(s)
 
-        all_dates = sorted(list(shifts_by_date.keys()))
+        if not self.shifts:
+            return
 
-        for i, current_date in enumerate(all_dates):
-            current_day_shifts = shifts_by_date[current_date]
-            next_day_shifts = shifts_by_date.get(current_date + timedelta(days=1), [])
+        min_date = min(s.date for s in self.shifts)
 
-            # Combine current day and next day shifts to check adjacent time blocks
-            shifts_to_check = current_day_shifts + next_day_shifts
+        def shift_start_minutes(s):
+            day_diff = (s.date - min_date).days
+            start_min = (s.start_time // 100) * 60 + (s.start_time % 100)
+            return day_diff * 24 * 60 + start_min
 
-            for a_idx, shift_a in enumerate(shifts_to_check):
-                for shift_b in shifts_to_check[a_idx + 1:]:
-                    d_a = shift_a.date
-                    d_b = shift_b.date
-                    day_diff = (d_b - d_a).days
+        def shift_end_minutes(s):
+            return shift_start_minutes(s) + int(s.duration_hours * 60)
 
-                    if day_diff < 0:
-                        continue # Should not happen due to structure, but just in case
+        # Sort all shifts by start time
+        sorted_shifts = sorted(self.shifts, key=shift_start_minutes)
 
-                    # Calculate absolute end time of A and start time of B in minutes
-                    a_start_min = (shift_a.start_time // 100) * 60 + (shift_a.start_time % 100)
-                    # Instead of military end_time parsing which fails on 60m rollover, we calculate it natively:
-                    a_end_min = a_start_min + int(shift_a.duration_hours * 60)
+        # Since shifts are not pre-assigned to staff in the optimizer, we must
+        # create constraints for all staff for pairs of shifts that are too close in time.
+        # However, by sorting the shifts by start time, we only need to compare each shift
+        # with subsequent shifts until the start time of the subsequent shift is safely
+        # beyond the end time of the current shift plus the min_rest_minutes.
+        # This reduces the number of comparisons drastically compared to O(N^2).
+        # We apply this for all staff to prevent any staff member from taking both shifts.
 
-                    b_start_min = (shift_b.start_time // 100) * 60 + (shift_b.start_time % 100)
-                    b_start_min += day_diff * 24 * 60
+        for staff in self.staff_list:
+            # We iterate through the sorted shifts
+            for i in range(len(sorted_shifts)):
+                shift_a = sorted_shifts[i]
+                a_end = shift_end_minutes(shift_a)
 
-                    b_end_min = b_start_min + int(shift_b.duration_hours * 60)
+                # Only look ahead to adjacent shifts in time
+                for j in range(i + 1, len(sorted_shifts)):
+                    shift_b = sorted_shifts[j]
+                    b_start = shift_start_minutes(shift_b)
 
-                    # We just need to check if the time segments overlap or are too close
-                    # Segment A: [a_start, a_end] (relative to d_a)
-                    # Segment B: [b_start, b_end] (relative to d_a)
-                    b_s = b_start_min
-                    a_e = a_end_min
+                    # If shift_b starts after shift_a ends + min_rest, all subsequent shifts will too
+                    if b_start >= a_end + min_rest_minutes:
+                        break
 
-                    if b_s >= a_e:
-                        if (b_s - a_e) < min_rest_minutes:
-                            for staff in self.staff_list:
-                                self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
-                    else:
-                        # shift_b starts before shift_a ends.
-                        a_s = a_start_min
-                        b_e = b_end_min
-
-                        if a_s >= b_e:
-                            if (a_s - b_e) < min_rest_minutes:
-                                for staff in self.staff_list:
-                                    self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
-                        else:
-                            # They overlap, definitely can't do both
-                            for staff in self.staff_list:
-                                self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
+                    # Otherwise, shift_b is too close to shift_a. They cannot both be assigned to this staff.
+                    self.model.Add(self.assignments[(staff.id, shift_a.id)] + self.assignments[(staff.id, shift_b.id)] <= 1)
 
 
     def _apply_max_consecutive_days(self):
