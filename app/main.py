@@ -30,7 +30,10 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     # In production, check against env var or DB
     expected_key = os.getenv("COMPLIANCE_API_KEY")
     if not expected_key:
-        return True # Dev mode: allow if key not set
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error: COMPLIANCE_API_KEY not set",
+        )
     if api_key == expected_key:
         return True
     raise HTTPException(
