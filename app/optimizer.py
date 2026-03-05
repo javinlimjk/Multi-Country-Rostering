@@ -253,10 +253,16 @@ class RosterOptimizer:
 
     def _apply_max_consecutive_days(self):
         max_d = self.rules.get('max_consecutive_days', 6)
+        if not self.shifts:
+            return
+
         shifts_by_date = defaultdict(list)
         for s in self.shifts:
             shifts_by_date[s.date].append(s)
-        all_dates = sorted(shifts_by_date.keys())
+
+        min_date = min(s.date for s in self.shifts)
+        max_date = max(s.date for s in self.shifts)
+        all_dates = [min_date + timedelta(days=i) for i in range((max_date - min_date).days + 1)]
         
         for staff in self.staff_list:
             # Sliding window of size max_d + 1
@@ -270,7 +276,12 @@ class RosterOptimizer:
 
     def _apply_max_weekly_hours(self):
         max_h = self.rules.get('max_weekly_hours', 44)
-        all_dates = sorted(list(set(s.date for s in self.shifts)))
+        if not self.shifts:
+            return
+
+        min_date = min(s.date for s in self.shifts)
+        max_date = max(s.date for s in self.shifts)
+        all_dates = [min_date + timedelta(days=i) for i in range((max_date - min_date).days + 1)]
         
         # Check every 7-day window
         # Convert hours to minutes for integer constraint
