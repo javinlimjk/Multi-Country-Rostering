@@ -446,8 +446,11 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
     # Build Shift Map
     shift_map = {}
     for s in shift_definitions:
-        start_min, end_min = TimeUtils.parse_time_to_minutes(s['Start Time'], s['Duration'])
-        shift_map[s['Name']] = {'start_min': start_min, 'end_min': end_min, 'req': s['Staff Needed']}
+        start_val = int(s['Start Time'])
+        dur_hours = float(s['Duration'])
+        start_min = (start_val // 100) * 60 + (start_val % 100)
+        end_min = start_min + int(dur_hours * 60)
+        shift_map[s['Name']] = {'start_min': start_min, 'end_min': end_min, 'req': s['Staff Needed'], 'dur_hours': dur_hours}
 
     # 1. Check Understaffing
     coverage_counter = Counter()
@@ -500,4 +503,74 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
                     "search_query": "minimum rest period",
                     "meta": {"date": next_s['date'].isoformat(), "shift": next_s['shift'], "violator": curr['staff_id']}
                 })
+
+    # 3. Check Max Daily Hours
+    max_daily_h = rules.get('max_daily_hours', 12)
+    staff_day_hours = defaultdict(float)
+    for x in working_assignments:
+        if x['shift'] in shift_map:
+            dur = shift_map[x['shift']]['dur_hours']
+            staff_day_hours[(x['staff_id'], x['date'])] += dur
+
+    for (staff_id, d), total_hours in staff_day_hours.items():
+        if total_hours > max_daily_h:
+            errors.append({
+                "type": "Daily Hours Violation",
+                "msg": f"⏳ Daily Hours Violation: {staff_id} on {d}. Worked {total_hours}h (Max {max_daily_h}h).",
+                "search_query": "maximum daily working hours",
+                "meta": {"date": d.isoformat(), "violator": staff_id}
+            })
+
+    # 4. Check Max Weekly Hours
+    max_weekly_h = rules.get('max_weekly_hours', 44)
+    staff_dates = defaultdict(list)
+    for x in working_assignments:
+        if x['shift'] in shift_map:
+            staff_dates[x['staff_id']].append((x['date'], shift_map[x['shift']]['dur_hours']))
+
+    for staff_id, shifts in staff_dates.items():
+        shifts.sort(key=lambda y: y[0])
+        all_dates_worked = sorted(list(set(y[0] for y in shifts)))
+
+        if not all_dates_worked:
+            continue
+
+        day_dict = defaultdict(float)
+        for d, hrs in shifts:
+            day_dict[d] += hrs
+
+        min_date = all_dates_worked[0]
+        max_date = all_dates_worked[-1]
+
+        current_date = min_date
+        while current_date <= max_date:
+            window_hours = sum(day_dict[current_date + timedelta(days=i)] for i in range(7))
+            if window_hours > max_weekly_h:
+                errors.append({
+                    "type": "Weekly Hours Violation",
+                    "msg": f"📅 Weekly Hours Violation: {staff_id} from {current_date} to {current_date + timedelta(days=6)}. Worked {window_hours}h (Max {max_weekly_h}h).",
+                    "search_query": "maximum weekly working hours",
+                    "meta": {"date": current_date.isoformat(), "violator": staff_id}
+                })
+            current_date += timedelta(days=1)
+
+    # 5. Check Max Consecutive Days
+    max_consecutive_days = rules.get('max_consecutive_days', 6)
+    for staff_id, shifts in staff_dates.items():
+        worked_days = sorted(list(set(y[0] for y in shifts)))
+
+        streak = 1
+        for i in range(1, len(worked_days)):
+            if (worked_days[i] - worked_days[i-1]).days == 1:
+                streak += 1
+                if streak > max_consecutive_days:
+                    errors.append({
+                        "type": "Consecutive Days Violation",
+                        "msg": f"🔥 Consecutive Days Violation: {staff_id} worked {streak} days ending on {worked_days[i]} (Max {max_consecutive_days}).",
+                        "search_query": "maximum consecutive working days",
+                        "meta": {"date": worked_days[i].isoformat(), "violator": staff_id}
+                    })
+            else:
+                streak = 1
+
     return errors
