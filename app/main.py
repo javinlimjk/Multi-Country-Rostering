@@ -65,9 +65,6 @@ def load_models():
 
     app.state.compliance_engine = engine
 
-def get_compliance_engine(request: Request):
-    return getattr(request.app.state, "compliance_engine", None)
-    
     # Setup MLflow
     mlflow_dir = os.path.join(base_dir, "mlruns")
     if not os.path.exists(mlflow_dir):
@@ -75,6 +72,9 @@ def get_compliance_engine(request: Request):
     mlflow.set_tracking_uri(f"file:{mlflow_dir}")
     mlflow.set_experiment("SATS_Roster_Optimization")
     logger.info("✅ System Ready.")
+
+def get_compliance_engine(request: Request):
+    return getattr(request.app.state, "compliance_engine", None)
 
 # --- REQUEST SCHEMAS ---
 class ForecastRequest(BaseModel):

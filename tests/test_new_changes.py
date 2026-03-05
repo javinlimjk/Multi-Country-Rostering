@@ -34,6 +34,9 @@ sys.modules['app.rag.ingest'] = MagicMock()
 sys.modules['app.rag.retriever'] = MagicMock()
 sys.modules['app.rag.chain'] = MagicMock()
 sys.modules['pandas'] = MagicMock()
+sys.modules['celery'] = MagicMock()
+sys.modules['celery.result'] = MagicMock()
+sys.modules['app.tasks'] = MagicMock()
 
 # Set up PYTHONPATH equivalent
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
