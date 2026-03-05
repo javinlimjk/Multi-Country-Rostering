@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import os
 import json
+import re
 from typing import Optional, Dict, Any
 from app.state import RosterState
 
@@ -93,8 +94,9 @@ class SchedulingAgent:
 
         try:
             # Sanitize the user input by replacing any existing </user_input> tags
-            # to prevent an attacker from prematurely closing the data block and injecting commands.
-            sanitized_user_text = user_text.replace("</user_input>", "")
+            # using regex to catch case variations and spacing,
+            # preventing an attacker from prematurely closing the data block and injecting commands.
+            sanitized_user_text = re.sub(r'</\s*user_input\s*>', '', user_text, flags=re.IGNORECASE)
 
             full_prompt = f"{system_prompt}\n\n<user_input>\n{sanitized_user_text}\n</user_input>"
 
