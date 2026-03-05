@@ -1,27 +1,6 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:alpine
-    container_name: sats_redis
-    ports:
-      - "6379:6379"
-
-  celery_worker:
-    build: .
-    container_name: sats_celery_worker
-    command: celery -A app.celery_app.celery_app worker --loglevel=info
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - FLIGHT_API_KEY=${FLIGHT_API_KEY}
-    depends_on:
-      - redis
-    volumes:
-      - ./app:/app/app
-      - ./data:/app/data
-      - ./mlruns:/app/mlruns
-
   backend:
     build: .
     container_name: sats_backend
@@ -31,9 +10,6 @@ services:
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - FLIGHT_API_KEY=${FLIGHT_API_KEY}
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - redis
     volumes:
       - ./app:/app/app # Live reload logic
       - ./data:/app/data

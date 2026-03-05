@@ -1,5 +1,5 @@
 # app/main.py
-from fastapi import FastAPI, HTTPException, Security, status, Depends, Request
+from fastapi import FastAPI, HTTPException, Security, status, Depends
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -19,14 +19,6 @@ from app.compliance import ComplianceEngine
 from app.rules import get_rules_for_country
 from app.agent import SchedulingAgent
 from app.demand_planner import FlightService, calculate_required_staff
-from celery.result import AsyncResult
-from app.tasks import (
-    task_forecast,
-    task_optimize,
-    task_validate,
-    task_recommend,
-    task_agent_chat
-)
 
 app = FastAPI(title="SATS Rostering API", version="6.0")
 
@@ -38,10 +30,7 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     # In production, check against env var or DB
     expected_key = os.getenv("COMPLIANCE_API_KEY")
     if not expected_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server configuration error: COMPLIANCE_API_KEY not set",
-        )
+        return True # Dev mode: allow if key not set
     if api_key == expected_key:
         return True
     raise HTTPException(
@@ -50,23 +39,21 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     )
 
 # --- GLOBAL STATE ---
+compliance_engine = None
+
 @app.on_event("startup")
 def load_models():
+    global compliance_engine
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     laws_path = os.path.join(base_dir, "data", "laws")
     
     logger.info(f"🚀 Server Starting... Scanning for laws in {laws_path}")
-    engine = ComplianceEngine()
+    compliance_engine = ComplianceEngine()
     
     if os.path.exists(laws_path):
-        engine.load_laws(laws_path)
+        compliance_engine.load_laws(laws_path)
     else:
         logger.warning("⚠️ Warning: Laws directory not found. RAG features will be disabled.")
-
-    app.state.compliance_engine = engine
-
-def get_compliance_engine(request: Request):
-    return getattr(request.app.state, "compliance_engine", None)
     
     # Setup MLflow
     mlflow_dir = os.path.join(base_dir, "mlruns")
@@ -116,48 +103,49 @@ class AgentChatRequest(BaseModel):
 def health_check():
     return {"status": "active", "version": "6.0"}
 
-@app.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
-def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id)
-    if task_result.state == 'PENDING':
-        return {"state": task_result.state, "status": "Pending..."}
-    elif task_result.state != 'FAILURE':
-        return {
-            "state": task_result.state,
-            "result": task_result.result,
-        }
-    else:
-        # something went wrong in the background job
-        return {
-            "state": task_result.state,
-            "error": str(task_result.info), # this is the exception raised
-        }
-
 @app.post("/forecast", dependencies=[Depends(verify_api_key)])
 def get_staffing_forecast(payload: ForecastRequest):
-    task = task_forecast.delay(
+    forecaster = StaffingForecaster()
+    return forecaster.calculate_needs_simulation(
         payload.shift_inputs, 
         payload.days, 
-        payload.country,
-        payload.buffer
+        country=payload.country,
+        absence_buffer=payload.buffer
     )
-    return {"task_id": task.id}
 
 @app.post("/optimize", dependencies=[Depends(verify_api_key)])
 def generate_roster(payload: OptimizeRequest):
-    staff_dicts = [s.dict() for s in payload.staff]
-    shift_dicts = [s.dict() for s in payload.shifts]
-    task = task_optimize.delay(
-        staff_dicts,
-        shift_dicts,
-        payload.country,
-        payload.rules,
-        payload.demand_signal
-    )
-    return {"task_id": task.id}
+    # 1. Get Base Rules
+    rules = get_rules_for_country(payload.country)
+
+    # 2. Apply Overrides (from Frontend "Advanced Policy" tab)
+    if payload.rules:
+        rules.update(payload.rules)
+
+    logger.info(f"Running Optimization for {len(payload.staff)} staff")
+
+    # Pass demand_signal to optimizer
+    opt = RosterOptimizer(payload.staff, payload.shifts, rules, demand_signal=payload.demand_signal)
+
+    # 3. Solve & Log
+    with mlflow.start_run():
+        mlflow.log_param("country", payload.country)
+        mlflow.log_param("staff_count", len(payload.staff))
+
+        result = opt.solve()
+
+        if not result:
+            mlflow.log_metric("success", 0)
+            raise HTTPException(status_code=400, detail="Infeasible solution. Constraints are too tight for the number of staff.")
+
+        metrics = result['metrics']
+        mlflow.log_metric("success", 1)
+        mlflow.log_metric("runtime", metrics['runtime_seconds'])
+
+        return result
 
 @app.post("/validate", dependencies=[Depends(verify_api_key)])
-def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(get_compliance_engine)):
+def validate_roster(payload: ValidateRequest):
     with mlflow.start_run():
         mlflow.log_param("endpoint", "validate")
         mlflow.log_param("country", payload.country)
@@ -169,8 +157,8 @@ def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(ge
 
         # 2. AI Compliance Audit (Nuanced Checks)
         audit_report = None
-        if engine:
-            audit_report = engine.audit_roster(
+        if compliance_engine:
+            audit_report = compliance_engine.audit_roster(
                 payload.assignments,
                 payload.shift_definitions,
                 country_code=payload.country
@@ -189,16 +177,15 @@ def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(ge
 
 @app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend_staff(payload: RecommendationRequest):
-    staff_dicts = [s.dict() for s in payload.staff_list]
-    task = task_recommend.delay(
-        payload.date_target.isoformat() if isinstance(payload.date_target, date) else payload.date_target,
+    rules = get_rules_for_country(payload.country)
+    opt = RosterOptimizer(payload.staff_list, [], rules)
+    suggestion = opt.recommend_replacement(
+        payload.date_target,
         payload.shift_name, 
         payload.assignments, 
-        payload.shift_definitions,
-        staff_dicts,
-        payload.country
+        payload.shift_definitions
     )
-    return {"task_id": task.id}
+    return {"recommendation": suggestion}
 
 @app.post("/metrics", dependencies=[Depends(verify_api_key)])
 def calculate_live_metrics(payload: MetricsRequest):
@@ -220,25 +207,25 @@ def calculate_live_metrics(payload: MetricsRequest):
     return opt.calculate_metrics_only(assignments)
 
 @app.get("/compliance/search", dependencies=[Depends(verify_api_key)])
-def search_laws(query: str, country: str = "SG", engine: Optional[Any] = Depends(get_compliance_engine)): # Added country param
+def search_laws(query: str, country: str = "SG"): # Added country param
     with mlflow.start_run():
         mlflow.log_param("endpoint", "search")
         mlflow.log_param("query", query)
         mlflow.log_param("country", country)
 
-        if not engine:
+        if not compliance_engine:
             raise HTTPException(status_code=503, detail="AI Engine not ready")
 
         # Pass the country code to the engine
-        results = engine.check_compliance(query, country_code=country)
+        results = compliance_engine.check_compliance(query, country_code=country)
 
         mlflow.log_metric("results_count", len(results))
         return results
 
 @app.post("/agent/chat", dependencies=[Depends(verify_api_key)])
 def agent_chat(payload: AgentChatRequest):
-    task = task_agent_chat.delay(payload.message, payload.state)
-    return {"task_id": task.id}
+    agent = SchedulingAgent()
+    return agent.process_message(payload.message, current_state_dict=payload.state)
 
 @app.get("/demand/{airport_code}", dependencies=[Depends(verify_api_key)])
 def get_demand(airport_code: str):

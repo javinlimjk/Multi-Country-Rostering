@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import uuid
 import pandas as pd
 from datetime import datetime, date
 from typing import List, Dict, Any
@@ -154,11 +153,13 @@ class ComplianceEngine:
         # Step 1: Mask PII explicitly
         masked_assignments = []
         id_map = {}
+        next_id = 1
 
         for assignment in assignments:
             staff_id = assignment.get('staff_id')
             if staff_id not in id_map:
-                id_map[staff_id] = str(uuid.uuid4())
+                id_map[staff_id] = f"Employee_{next_id}"
+                next_id += 1
 
             masked_assignment = assignment.copy()
             masked_assignment['staff_id'] = id_map[staff_id]

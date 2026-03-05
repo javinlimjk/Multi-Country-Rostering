@@ -25,5 +25,3 @@ rank_bm25
 unstructured
 pdfminer.six
 python-dotenv
-celery
-redis
