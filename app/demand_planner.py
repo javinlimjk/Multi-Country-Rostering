@@ -1,6 +1,7 @@
 
 import requests
 import os
+import collections
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -145,8 +146,7 @@ def _distribute_demand(buckets, start_time, end_time, count):
     # Iterate from start_bucket to end_bucket inclusive
     curr = start_bucket
     while curr <= end_bucket:
-        if curr in buckets:
-            buckets[curr] += count
+        buckets[curr] += count
         curr += timedelta(minutes=30)
 
 def calculate_required_staff(flights):
@@ -160,22 +160,10 @@ def calculate_required_staff(flights):
         }
         (30-minute intervals)
     """
-    # Initialize 30-min buckets for the whole day
-    # Keys are datetime objects for the specific date
-    # But for the output, we might just want "HH:MM" string if it's single day,
-    # or keep ISO strings.
-
     if not flights: return {}
 
-    # Sort to find range (though we usually cover 00:00 to 23:59 of that day)
-    base_date = flights[0]['time'].date()
-    start_of_day = datetime.combine(base_date, datetime.min.time())
-
-    # Create buckets for 24h
-    buckets = {}
-    for i in range(48): # 24 * 2
-        t = start_of_day + timedelta(minutes=30*i)
-        buckets[t] = 0
+    # Initialize dynamic 30-min buckets
+    buckets = collections.defaultdict(int)
 
     for f in flights:
         f_time = f['time']
@@ -187,11 +175,6 @@ def calculate_required_staff(flights):
         rule = STAFFING_CONFIG['wide_body'] if is_wide else STAFFING_CONFIG['narrow_body']
 
         # 1. Ramp & Gate Demand
-        # Window starts at flight time (or slightly before? Prompt says "for a 90-minute window")
-        # Usually ground handling is [Arr - 45, Dep] or [Dep - 90, Dep].
-        # Prompt implies "Require X agents... for a window". Let's assume window starts at f_time (Arrival) or ends at f_time (Departure).
-        # "Returns arrivals and departures".
-        # Let's simplify: Window centers on event time or starts 60 mins before.
         # Let's assume the window starts 'window_minutes' BEFORE departure (for prep).
 
         start_task = f_time - timedelta(minutes=rule['window_minutes'])
@@ -213,8 +196,17 @@ def calculate_required_staff(flights):
 
     # Format Output: "HH:MM" -> Count
     output = {}
-    for t in sorted(buckets.keys()):
-        key = t.strftime("%H:%M")
-        output[key] = buckets[t]
+    if not buckets:
+        return output
+
+    # Find the range of datetimes
+    min_time = min(buckets.keys())
+    max_time = max(buckets.keys())
+
+    curr_time = min_time
+    while curr_time <= max_time:
+        key = curr_time.strftime("%H:%M")
+        output[key] = buckets[curr_time]
+        curr_time += timedelta(minutes=30)
 
     return output
