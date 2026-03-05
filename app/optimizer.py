@@ -5,6 +5,15 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 import time
 
+class TimeUtils:
+    @staticmethod
+    def parse_time_to_minutes(time_val, duration_val=0.0):
+        t = int(time_val)
+        start_min = (t // 100) * 60 + (t % 100)
+        dur_min = int(float(duration_val) * 60)
+        return start_min, start_min + dur_min
+
+
 class RosterOptimizer:
     def __init__(self, staff_list: list[Staff], shifts: list[Shift], rules: dict = None, demand_signal: dict = None):
         # Filter out inactive staff
@@ -204,11 +213,13 @@ class RosterOptimizer:
 
         def shift_start_minutes(s):
             day_diff = (s.date - min_date).days
-            start_min = (s.start_time // 100) * 60 + (s.start_time % 100)
+            start_min, _ = TimeUtils.parse_time_to_minutes(s.start_time, s.duration_hours)
             return day_diff * 24 * 60 + start_min
 
         def shift_end_minutes(s):
-            return shift_start_minutes(s) + int(s.duration_hours * 60)
+            day_diff = (s.date - min_date).days
+            _, end_min = TimeUtils.parse_time_to_minutes(s.start_time, s.duration_hours)
+            return day_diff * 24 * 60 + end_min
 
         # Sort all shifts by start time
         sorted_shifts = sorted(self.shifts, key=shift_start_minutes)
@@ -435,10 +446,7 @@ def validate_roster_logic(fixed_assignments: list[dict], shift_definitions: list
     # Build Shift Map
     shift_map = {}
     for s in shift_definitions:
-        start_val = int(s['Start Time'])
-        dur_hours = float(s['Duration'])
-        start_min = (start_val // 100) * 60 + (start_val % 100)
-        end_min = start_min + int(dur_hours * 60)
+        start_min, end_min = TimeUtils.parse_time_to_minutes(s['Start Time'], s['Duration'])
         shift_map[s['Name']] = {'start_min': start_min, 'end_min': end_min, 'req': s['Staff Needed']}
 
     # 1. Check Understaffing
