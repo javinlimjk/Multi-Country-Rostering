@@ -96,7 +96,7 @@ def task_validate(assignments, shift_definitions, country):
         }
 
 @celery_app.task(name="app.tasks.task_recommend")
-def task_recommend(date_target, shift_name, assignments, shift_definitions, staff_dicts, country):
+def task_recommend(date_target, shift_name, assignments, shift_definitions, staff_dicts, country, violation_type=None, violator=None):
     staff_list = [Staff(**s) for s in staff_dicts]
     rules = get_rules_for_country(country)
     opt = RosterOptimizer(staff_list, [], rules)
@@ -104,7 +104,9 @@ def task_recommend(date_target, shift_name, assignments, shift_definitions, staf
         date_target,
         shift_name,
         assignments,
-        shift_definitions
+        shift_definitions,
+        violation_type,
+        violator
     )
     return {"recommendation": suggestion}
 

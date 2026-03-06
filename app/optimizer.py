@@ -330,17 +330,72 @@ class RosterOptimizer:
         """Checks for Understaffing and Rest Violations based on manual edits."""
         return validate_roster_logic(fixed_assignments, shift_definitions, self.rules)
 
-    def recommend_replacement(self, date_target, shift_name, fixed_assignments, shift_definitions):
+    def recommend_replacement(self, date_target, shift_name, fixed_assignments, shift_definitions, violation_type=None, violator=None):
         """
         Smart Remediation:
         Phase 1: Find OFF Staff
         Phase 2: Find SWAP Candidates (Domino)
         """
         # Convert Data
-        if isinstance(date_target, str): date_target = date.fromisoformat(date_target)
+        if date_target and isinstance(date_target, str): date_target = date.fromisoformat(date_target)
         for x in fixed_assignments:
             if isinstance(x['date'], str): x['date'] = date.fromisoformat(x['date'])
 
+        # --- NEW GENERALIZED VIOLATION RESOLVER ---
+        if violation_type and violator:
+            current_errors = self.validate_roster(fixed_assignments, shift_definitions)
+            num_errors = len(current_errors)
+
+            if violation_type == 'Weekly Hours Violation':
+                check_dates = [date_target + timedelta(days=i) for i in range(7)]
+            else:
+                check_dates = [date_target]
+
+            violator_shifts = [x for x in fixed_assignments if x['staff_id'] == violator and x['date'] in check_dates and x['shift'] not in ["Off", "Leave", "MC"]]
+            all_staff_ids = [s.id for s in self.staff_list] if self.staff_list else list(set(x['staff_id'] for x in fixed_assignments))
+
+            best_swap = None
+            best_new_errors_count = num_errors
+
+            for v_assign in violator_shifts:
+                d = v_assign['date']
+                s_name = v_assign['shift']
+
+                day_assignments = {x['staff_id']: x['shift'] for x in fixed_assignments if x['date'] == d}
+                candidates_off = [sid for sid in all_staff_ids if day_assignments.get(sid) in ["Off", None] and sid != violator]
+
+                for c in candidates_off:
+                    sim_assignments = []
+                    c_added = False
+                    for x in fixed_assignments:
+                        item = x.copy()
+                        if item['staff_id'] == violator and item['date'] == d:
+                            item['shift'] = "Off"
+                        elif item['staff_id'] == c and item['date'] == d:
+                            item['shift'] = s_name
+                            c_added = True
+                        sim_assignments.append(item)
+
+                    if not c_added:
+                        sim_assignments.append({"staff_id": c, "date": d, "shift": s_name})
+
+                    new_errors = self.validate_roster(sim_assignments, shift_definitions)
+                    if len(new_errors) < best_new_errors_count:
+                        best_new_errors_count = len(new_errors)
+                        best_swap = {
+                            "candidate": c,
+                            "message": f"🌟 Resolved {violation_type}: Assigned {c} to '{s_name}' on {d.isoformat()}, moving {violator} to 'Off'.",
+                            "swaps": [
+                                {"staff_id": violator, "date": d.isoformat(), "shift": "Off"},
+                                {"staff_id": c, "date": d.isoformat(), "shift": s_name}
+                            ]
+                        }
+
+            if best_swap:
+                return best_swap
+            return {"candidate": None, "message": "No valid swap found to resolve this violation without causing others."}
+
+        # --- OLD LOGIC FOR UNDERSTAFFING ---
         # 1. Analyze Day
         workload = Counter()
         day_assignments = {} 
