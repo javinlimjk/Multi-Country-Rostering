@@ -20,6 +20,7 @@ from app.rules import get_rules_for_country
 from app.agent import SchedulingAgent
 from app.demand_planner import FlightService, calculate_required_staff
 from celery.result import AsyncResult
+from app.celery_app import celery_app
 from app.tasks import (
     task_forecast,
     task_optimize,
@@ -106,7 +107,7 @@ def health_check():
 
 @app.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
 def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id)
+    task_result = AsyncResult(task_id, app=celery_app)
     if task_result.state == 'PENDING':
         return {"state": task_result.state, "status": "Pending..."}
     elif task_result.state != 'FAILURE':
