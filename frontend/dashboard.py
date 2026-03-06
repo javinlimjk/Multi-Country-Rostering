@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import os
 import sys
 import time
+import requests
 
 # Add parent directory to path to import models if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
