@@ -1,5 +1,19 @@
 
+import sys
 import unittest
+from unittest.mock import MagicMock
+
+# Create mock BaseModel for offline test execution
+class MockBaseModel:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+mock_pydantic = MagicMock()
+mock_pydantic.BaseModel = MockBaseModel
+sys.modules['pydantic'] = mock_pydantic
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app.state import RosterState, ShiftItem
 
 class TestRosterStateMissingFields(unittest.TestCase):
