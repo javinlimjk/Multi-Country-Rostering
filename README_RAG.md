@@ -38,7 +38,6 @@ Create a `.env` file:
 GOOGLE_API_KEY=your_gemini_key
 PINECONE_API_KEY=your_pinecone_key (Optional)
 VECTOR_STORE_TYPE=faiss (or pinecone)
-COMPLIANCE_API_KEY=secret_key
 ```
 
 ### Ingestion
