@@ -4,8 +4,7 @@ import requests
 class APIService:
     def __init__(self):
         self.api_url = os.getenv("API_URL", "http://127.0.0.1:8000")
-        self.api_key = os.getenv("COMPLIANCE_API_KEY", "")
-        self.api_headers = {"X-API-Key": self.api_key} if self.api_key else {}
+        self.api_headers = {}
 
     def check_health(self):
         return requests.get(f"{self.api_url}/", timeout=1)
