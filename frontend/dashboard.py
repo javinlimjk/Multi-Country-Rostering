@@ -641,15 +641,24 @@ if page == "📅 Roster Dashboard":
                     st.info(f"✨ AI Recommendation: {rec.get('message', '')}")
                     c_apply, c_cancel = st.columns([1, 4])
                     if c_apply.button("Apply Fix", type="primary"):
+                        swaps = rec.get('swaps', [])
                         candidate = rec.get('candidate')
                         ctx = st.session_state.get('rec_context')
-                        if candidate and ctx:
+
+                        if swaps:
+                            for swap in swaps:
+                                st.session_state['roster_data'].at[swap['staff_id'], swap['date']] = swap['shift']
+                            st.toast("Fix Applied")
+                        elif candidate and ctx:
                             st.session_state['roster_data'].at[candidate, ctx['date']] = ctx['shift']
+                            if 'violator' in ctx:
+                                st.session_state['roster_data'].at[ctx['violator'], ctx['date']] = "Off"
                             st.toast(f"Fixed: Assigned {candidate}")
-                            # Clear state
-                            del st.session_state['recommendation']
-                            del st.session_state['rec_context']
-                            st.rerun()
+
+                        # Clear state
+                        del st.session_state['recommendation']
+                        del st.session_state['rec_context']
+                        st.rerun()
                     if c_cancel.button("Cancel"):
                         del st.session_state['recommendation']
                         del st.session_state['rec_context']
@@ -663,17 +672,19 @@ if page == "📅 Roster Dashboard":
                             c1.markdown(f"**{err['type']}**: {err['msg']}")
 
                             meta = err.get('meta')
-                            # Only show Resolve for Understaffing currently supported by backend
-                            if meta and err['type'] == 'Understaffing':
+                            # Show Resolve for all actionable conflicts
+                            if meta and err['type'] in ['Understaffing', 'Rest Violation', 'Weekly Hours Violation', 'Daily Hours Violation', 'Consecutive Days Violation']:
                                 if c2.button("Resolve", key=f"res_{i}"):
                                     with st.spinner("Finding replacement..."):
                                         p_rec = {
-                                            "date_target": meta['date'],
-                                            "shift_name": meta['shift'],
+                                            "date_target": meta.get('date', None),
+                                            "shift_name": meta.get('shift', None),
                                             "assignments": get_current_assignments(),
                                             "shift_definitions": st.session_state['shift_config_df'].to_dict('records'),
                                             "staff_list": get_staff_payload(),
-                                            "country": country_enum
+                                            "country": country_enum,
+                                            "violation_type": err['type'],
+                                            "violator": meta.get('violator', None)
                                         }
                                         try:
                                             rr = api_service.recommend(p_rec)

@@ -85,12 +85,14 @@ class ValidateRequest(BaseModel):
     country: str
 
 class RecommendationRequest(BaseModel):
-    date_target: date
-    shift_name: str
+    date_target: Optional[date] = None
+    shift_name: Optional[str] = None
     assignments: List[Dict[str, Any]]
     shift_definitions: List[Dict[str, Any]]
     staff_list: List[Staff]
     country: str 
+    violation_type: Optional[str] = None
+    violator: Optional[str] = None
 
 class MetricsRequest(BaseModel):
     assignments: List[Dict[str, Any]]
@@ -157,13 +159,16 @@ def validate_roster(payload: ValidateRequest):
 @app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend_staff(payload: RecommendationRequest):
     staff_dicts = [s.dict() for s in payload.staff_list]
+    date_val = payload.date_target.isoformat() if payload.date_target and isinstance(payload.date_target, date) else payload.date_target
     task = task_recommend.delay(
-        payload.date_target.isoformat() if isinstance(payload.date_target, date) else payload.date_target,
+        date_val,
         payload.shift_name, 
         payload.assignments, 
         payload.shift_definitions,
         staff_dicts,
-        payload.country
+        payload.country,
+        payload.violation_type,
+        payload.violator
     )
     return {"task_id": task.id}
 
