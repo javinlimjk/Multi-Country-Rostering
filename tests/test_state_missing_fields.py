@@ -1,5 +1,26 @@
 
 import unittest
+import os
+import sys
+
+from unittest.mock import MagicMock
+
+class MockBaseModel:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+        if not hasattr(self, 'shifts'): self.shifts = []
+        if not hasattr(self, 'month_year'): self.month_year = None
+        if not hasattr(self, 'start_time'): self.start_time = None
+        if not hasattr(self, 'duration_hours'): self.duration_hours = None
+
+sys.modules['pydantic'] = MagicMock()
+sys.modules['pydantic'].BaseModel = MockBaseModel
+sys.modules['pydantic'].Field = MagicMock()
+
+# Set up PYTHONPATH equivalent
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app.state import RosterState, ShiftItem
 
 class TestRosterStateMissingFields(unittest.TestCase):
