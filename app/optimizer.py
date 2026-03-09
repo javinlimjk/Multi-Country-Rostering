@@ -458,27 +458,79 @@ class RosterOptimizer:
     def _filter_candidates(self, candidates, date_target, target_def, fixed_assignments, shift_definitions):
         """Helper to check Rest Constraints for a list of candidate staff"""
         valid = []
-        t_start_val = int(target_def['Start Time'])
-        t_dur_hours = float(target_def['Duration'])
-
-        t_start_min = (t_start_val // 100) * 60 + (t_start_val % 100)
-        t_end_min = t_start_min + int(t_dur_hours * 60)
+        t_start_val = target_def['Start Time']
+        t_dur_hours = target_def['Duration']
+        t_start_min, t_end_min = TimeUtils.parse_time_to_minutes(t_start_val, t_dur_hours)
         
         min_rest_min = int(self.rules.get('min_rest_hours', 10) * 60)
+
+        max_daily_h = self.rules.get('max_daily_hours', 12)
+        max_weekly_h = self.rules.get('max_weekly_hours', 44)
+        max_consec = self.rules.get('max_consecutive_days', 6)
 
         for sid in candidates:
             is_legal = True
             
+            # 1. Check max daily hours
+            day_assignments = [x for x in fixed_assignments if x['staff_id'] == sid and x['date'] == date_target]
+            day_hours = 0
+            for a in day_assignments:
+                if a['shift'] not in ["Off", "Leave", "MC"]:
+                    a_def = next((s for s in shift_definitions if s['Name'] == a['shift']), None)
+                    if a_def: day_hours += float(a_def['Duration'])
+
+            if day_hours + float(t_dur_hours) > max_daily_h:
+                is_legal = False
+
+            # 2. Check max weekly hours
+            week_start = date_target - timedelta(days=date_target.weekday())
+            week_end = week_start + timedelta(days=6)
+            week_assignments = [x for x in fixed_assignments if x['staff_id'] == sid and week_start <= x['date'] <= week_end]
+            week_hours = 0
+            for a in week_assignments:
+                if a['shift'] not in ["Off", "Leave", "MC"]:
+                    a_def = next((s for s in shift_definitions if s['Name'] == a['shift']), None)
+                    if a_def: week_hours += float(a_def['Duration'])
+
+            if week_hours + float(t_dur_hours) > max_weekly_h:
+                is_legal = False
+
+            # 3. Check consecutive days
+            if is_legal:
+                # Get all dates worked
+                worked_dates = set()
+                for a in fixed_assignments:
+                    if a['staff_id'] == sid and a['shift'] not in ["Off", "Leave", "MC"]:
+                        worked_dates.add(a['date'])
+
+                # Check consecutive days streak going backwards
+                streak = 1
+                curr = date_target - timedelta(days=1)
+                while curr in worked_dates:
+                    streak += 1
+                    curr -= timedelta(days=1)
+
+                # Check consecutive days streak going forwards
+                curr = date_target + timedelta(days=1)
+                while curr in worked_dates:
+                    streak += 1
+                    curr += timedelta(days=1)
+
+                if streak > max_consec:
+                    is_legal = False
+
+            if not is_legal:
+                continue
+
             # PREV DAY CHECK
             prev_day = date_target - timedelta(days=1)
             prev_assign = next((x for x in fixed_assignments if x['staff_id'] == sid and x['date'] == prev_day), None)
             if prev_assign and prev_assign['shift'] not in ["Off", "Leave", "MC"]:
                 p_def = next((s for s in shift_definitions if s['Name'] == prev_assign['shift']), None)
                 if p_def:
-                    p_start_val = int(p_def['Start Time'])
-                    p_dur_hours = float(p_def['Duration'])
-                    p_start_min = (p_start_val // 100) * 60 + (p_start_val % 100)
-                    p_end_min = p_start_min + int(p_dur_hours * 60)
+                    p_start_val = p_def['Start Time']
+                    p_dur_hours = p_def['Duration']
+                    p_start_min, p_end_min = TimeUtils.parse_time_to_minutes(p_start_val, p_dur_hours)
 
                     gap = (t_start_min + 24 * 60) - p_end_min
                     if gap < min_rest_min: is_legal = False
@@ -490,8 +542,8 @@ class RosterOptimizer:
                 if next_assign and next_assign['shift'] not in ["Off", "Leave", "MC"]:
                     n_def = next((s for s in shift_definitions if s['Name'] == next_assign['shift']), None)
                     if n_def:
-                        n_start_val = int(n_def['Start Time'])
-                        n_start_min = (n_start_val // 100) * 60 + (n_start_val % 100)
+                        n_start_val = n_def['Start Time']
+                        n_start_min, _ = TimeUtils.parse_time_to_minutes(n_start_val)
 
                         gap = (n_start_min + 24 * 60) - t_end_min
                         if gap < min_rest_min: is_legal = False

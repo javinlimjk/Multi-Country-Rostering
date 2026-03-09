@@ -222,6 +222,11 @@ class ComplianceEngine:
                 }
                 legacy_report['violations'].append(legacy_v)
 
+            # Enforce FAIL verdict if there are deterministic errors
+            if deterministic_errors and legacy_report['verdict'] == 'PASS':
+                legacy_report['verdict'] = 'FAIL'
+                legacy_report['summary'] = "CRITICAL ALGORITHMIC VIOLATIONS FOUND. " + legacy_report['summary']
+
             return legacy_report
 
         except Exception as e:
