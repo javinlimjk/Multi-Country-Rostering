@@ -88,11 +88,13 @@ class StaffingForecaster:
         
         for d in range(days):
             curr = start_date + timedelta(days=d)
+            # --- FIX IS HERE: Convert Date Object to String ---
+            curr_str = curr.isoformat()
             
             for item in shift_inputs:
                 count = self._safe_int(item.get("Staff Needed"))
                 start_t = self._safe_int(item.get("Start Time"))
-                dur = float(item.get("Duration", 0))
+                dur = self._safe_int(item.get("Duration"))
                 name = str(item.get("Name", "Unnamed"))
 
                 if count <= 0 or dur <= 0: continue
@@ -102,12 +104,12 @@ class StaffingForecaster:
 
                 end_h = (end_min // 60) % 24
                 end_m = end_min % 60
-                end_t = int(end_h * 100 + end_m)
+                end_t = end_h * 100 + end_m
                 
                 for i in range(count):
                     shifts.append(Shift(
                         id=f"{name}_{d}_{i}", 
-                        date=curr,
+                        date=curr_str, # <--- Passing String now, not Object
                         type=name, 
                         start_time=start_t, 
                         end_time=end_t, 

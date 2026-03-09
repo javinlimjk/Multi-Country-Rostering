@@ -6,7 +6,6 @@ from datetime import date, timedelta
 import os
 import sys
 import time
-import requests
 
 # Add parent directory to path to import models if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -249,7 +248,7 @@ def run_optimization(start_date, days_count, country_enum):
         if resp.status_code == 200:
             task_id = resp.json().get('task_id')
             while True:
-                status_resp = requests.get(f"{api_service.api_url}/tasks/{task_id}", headers=api_service.api_headers, timeout=10)
+                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
                 if status_resp.status_code == 200:
                     status_data = status_resp.json()
                     if status_data.get('state') == 'SUCCESS':
@@ -395,7 +394,7 @@ if page == "📅 Roster Dashboard":
                         if r.status_code == 200:
                             task_id = r.json().get('task_id')
                             while True:
-                                status_resp = requests.get(f"{api_service.api_url}/tasks/{task_id}", headers=api_service.api_headers, timeout=10)
+                                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
                                 if status_resp.status_code == 200:
                                     status_data = status_resp.json()
                                     if status_data.get('state') == 'SUCCESS':
@@ -615,7 +614,7 @@ if page == "📅 Roster Dashboard":
                         if r.status_code == 200:
                             task_id = r.json().get('task_id')
                             while True:
-                                status_resp = requests.get(f"{api_service.api_url}/tasks/{task_id}", headers=api_service.api_headers, timeout=10)
+                                status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
                                 if status_resp.status_code == 200:
                                     status_data = status_resp.json()
                                     if status_data.get('state') == 'SUCCESS':
@@ -680,7 +679,7 @@ if page == "📅 Roster Dashboard":
                                             if rr.status_code == 200:
                                                 task_id = rr.json().get('task_id')
                                                 while True:
-                                                    status_resp = requests.get(f"{api_service.api_url}/tasks/{task_id}", headers=api_service.api_headers, timeout=10)
+                                                    status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
                                                     if status_resp.status_code == 200:
                                                         status_data = status_resp.json()
                                                         if status_data.get('state') == 'SUCCESS':
@@ -733,7 +732,7 @@ elif page == "🤖 AI Copilot":
                 if r.status_code == 200:
                     task_id = r.json().get('task_id')
                     while True:
-                        status_resp = requests.get(f"{api_service.api_url}/tasks/{task_id}", headers=api_service.api_headers, timeout=10)
+                        status_resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=API_HEADERS, timeout=10)
                         if status_resp.status_code == 200:
                             status_data = status_resp.json()
                             if status_data.get('state') == 'SUCCESS':
