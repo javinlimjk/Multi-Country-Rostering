@@ -1,12 +1,8 @@
 
-import os
-import sys
 import unittest
 from unittest.mock import patch, MagicMock
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.modules['requests'] = MagicMock()
-
 from app.demand_planner import FlightService
+import os
 
 class TestSecurityTimeouts(unittest.TestCase):
     @patch('app.demand_planner.requests.get')
@@ -23,7 +19,6 @@ class TestSecurityTimeouts(unittest.TestCase):
             service.get_flights("SIN", "2023-10-27")
 
             # Verify requests.get was called with timeout=10
-            self.assertTrue(mock_get.called, "requests.get was not called")
             args, kwargs = mock_get.call_args
             self.assertEqual(kwargs.get('timeout'), 10, "FlightService.get_flights should call requests.get with timeout=10")
 
