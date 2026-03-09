@@ -20,6 +20,7 @@ from app.rules import get_rules_for_country
 from app.agent import SchedulingAgent
 from app.demand_planner import FlightService, calculate_required_staff
 from celery.result import AsyncResult
+from app.celery_app import celery_app
 from app.tasks import (
     task_forecast,
     task_optimize,
@@ -106,7 +107,7 @@ def health_check():
 
 @app.get("/tasks/{task_id}", dependencies=[Depends(verify_api_key)])
 def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id)
+    task_result = AsyncResult(task_id, app=celery_app)
     if task_result.state == 'PENDING':
         return {"state": task_result.state, "status": "Pending..."}
     elif task_result.state != 'FAILURE':
@@ -145,35 +146,13 @@ def generate_roster(payload: OptimizeRequest):
     return {"task_id": task.id}
 
 @app.post("/validate", dependencies=[Depends(verify_api_key)])
-def validate_roster(payload: ValidateRequest, engine: Optional[Any] = Depends(get_compliance_engine)):
-    with mlflow.start_run():
-        mlflow.log_param("endpoint", "validate")
-        mlflow.log_param("country", payload.country)
-
-        # 1. Technical Check (Hard Constraints) via Optimizer
-        rules = get_rules_for_country(payload.country)
-        opt = RosterOptimizer([], [], rules)
-        technical_errors = opt.validate_roster(payload.assignments, payload.shift_definitions)
-
-        # 2. AI Compliance Audit (Nuanced Checks)
-        audit_report = None
-        if engine:
-            audit_report = engine.audit_roster(
-                payload.assignments,
-                payload.shift_definitions,
-                country_code=payload.country
-            )
-
-        # Log metrics
-        mlflow.log_metric("technical_errors", len(technical_errors))
-        if audit_report:
-            mlflow.log_metric("compliance_violations", len(audit_report.get("violations", [])))
-            mlflow.log_param("verdict", audit_report.get("verdict", "N/A"))
-
-        return {
-            "technical_errors": technical_errors,
-            "compliance_audit": audit_report
-        }
+def validate_roster(payload: ValidateRequest):
+    task = task_validate.delay(
+        payload.assignments,
+        payload.shift_definitions,
+        payload.country
+    )
+    return {"task_id": task.id}
 
 @app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend_staff(payload: RecommendationRequest):
