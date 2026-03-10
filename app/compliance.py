@@ -177,9 +177,8 @@ class ComplianceEngine:
 
         det_error_str = "No algorithmic violations found."
         if masked_deterministic_errors:
-            det_error_str = "CRITICAL ALGORITHMIC VIOLATIONS (Must be addressed):\n"
-            for err in masked_deterministic_errors:
-                det_error_str += f"- {err['type']}: {err['msg']}\n"
+            error_lines = [f"- {err['type']}: {err['msg']}" for err in masked_deterministic_errors]
+            det_error_str = "CRITICAL ALGORITHMIC VIOLATIONS (Must be addressed):\n" + "\n".join(error_lines) + "\n"
 
         # Step 4: RAG Chain
         chain = get_compliance_chain()
