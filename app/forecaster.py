@@ -88,7 +88,6 @@ class StaffingForecaster:
         
         for d in range(days):
             curr = start_date + timedelta(days=d)
-            # --- FIX IS HERE: Convert Date Object to String ---
             curr_str = curr.isoformat()
             
             for item in shift_inputs:
@@ -108,8 +107,8 @@ class StaffingForecaster:
                 
                 for i in range(count):
                     shifts.append(Shift(
-                        id=f"{name}_{d}_{i}", 
-                        date=curr_str, # <--- Passing String now, not Object
+                        id=f"{name}_{curr_str}_{i}",
+                        date=curr_str,
                         type=name, 
                         start_time=start_t, 
                         end_time=end_t, 
